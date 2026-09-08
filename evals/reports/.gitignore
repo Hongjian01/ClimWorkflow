@@ -1,2 +1,5 @@
 # Eval 运行产物，不得提交。
 *.json
+*.md
+*.jsonl
+knowledge-observe/

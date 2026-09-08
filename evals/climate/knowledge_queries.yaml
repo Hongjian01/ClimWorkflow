@@ -1,0 +1,148 @@
+# EVAL-006：人审知识召回问句表（与说明书正文分离）。
+# 这不是 Climate-Agent-Bench-85，也不是企业知识库准确率，不是 Hit Rate 92%。
+# n≈20，只报离线召回方向，不得并入 _REAL_OFFLINE_ORDER，不得灌进 knowledge_alias_smoke。
+disclaimer: >
+  本表不是 Climate-Agent-Bench-85，也不是企业知识库准确率（不是 Hit Rate 92%
+  一类外部模板数字）。问句整句不得写入 tests/fixtures/climate_knowledge/。
+schema_version: 1
+queries:
+  - id: q01
+    query: "ERA5 GRIB shortName t2m refers to which catalogue key?"
+    type: exact_short
+    canonical_cds: 2m_temperature
+    canonical_grib: t2m
+    gold_source: era5_2m_temperature.md
+    must_not_grib: d2m
+  - id: q02
+    query: "Find the parent that defines CDS name 2m_dewpoint_temperature."
+    type: exact_short
+    canonical_cds: 2m_dewpoint_temperature
+    canonical_grib: d2m
+    gold_source: era5_2m_dewpoint_temperature.md
+    must_not_grib: t2m
+  - id: q03
+    query: "Which section documents inspect field u10?"
+    type: exact_short
+    canonical_cds: 10m_u_component_of_wind
+    canonical_grib: u10
+    gold_source: era5_10m_u_component_of_wind.md
+    must_not_grib: v10
+  - id: q04
+    query: "Locate GRIB shortName v10 in the fixture corpus."
+    type: exact_short
+    canonical_cds: 10m_v_component_of_wind
+    canonical_grib: v10
+    gold_source: era5_10m_v_component_of_wind.md
+    must_not_grib: u10
+  - id: q05
+    query: "Catalogue long name mean_sea_level_pressure maps to which shortName?"
+    type: exact_short
+    canonical_cds: mean_sea_level_pressure
+    canonical_grib: msl
+    gold_source: era5_mean_sea_level_pressure.md
+    must_not_grib: sp
+  - id: q06
+    query: "Where is surface_pressure explained for acquire?"
+    type: exact_short
+    canonical_cds: surface_pressure
+    canonical_grib: sp
+    gold_source: era5_surface_pressure.md
+    must_not_grib: msl
+  - id: q07
+    query: "shortName tp appears under which precipitation parent?"
+    type: exact_short
+    canonical_cds: total_precipitation
+    canonical_grib: tp
+    gold_source: era5_total_precipitation.md
+    must_not_grib: ""
+  - id: q08
+    query: "Directory variable sea_surface_temperature uses which GRIB name?"
+    type: exact_short
+    canonical_cds: sea_surface_temperature
+    canonical_grib: sst
+    gold_source: era5_sea_surface_temperature.md
+    must_not_grib: t2m
+  - id: q09
+    query: "air temperature roughly two metres above ground"
+    type: en_near
+    canonical_cds: 2m_temperature
+    canonical_grib: t2m
+    gold_source: era5_2m_temperature.md
+    must_not_grib: d2m
+  - id: q10
+    query: "dewpoint temperature of air near the surface"
+    type: en_near
+    canonical_cds: 2m_dewpoint_temperature
+    canonical_grib: d2m
+    gold_source: era5_2m_dewpoint_temperature.md
+    must_not_grib: t2m
+  - id: q11
+    query: "eastward wind component at ten metres"
+    type: en_near
+    canonical_cds: 10m_u_component_of_wind
+    canonical_grib: u10
+    gold_source: era5_10m_u_component_of_wind.md
+    must_not_grib: v10
+  - id: q12
+    query: "pressure reduced to mean sea level"
+    type: en_near
+    canonical_cds: mean_sea_level_pressure
+    canonical_grib: msl
+    gold_source: era5_mean_sea_level_pressure.md
+    must_not_grib: sp
+  - id: q13
+    query: "rainfall accumulated during the model step"
+    type: en_near
+    canonical_cds: total_precipitation
+    canonical_grib: tp
+    gold_source: era5_total_precipitation.md
+    must_not_grib: ""
+  - id: q14
+    query: "近地面空气温度对应哪条 CDS 名"
+    type: zh_near
+    canonical_cds: 2m_temperature
+    canonical_grib: t2m
+    gold_source: era5_2m_temperature.md
+    must_not_grib: d2m
+  - id: q15
+    query: "距地两米露点该填什么变量"
+    type: zh_near
+    canonical_cds: 2m_dewpoint_temperature
+    canonical_grib: d2m
+    gold_source: era5_2m_dewpoint_temperature.md
+    must_not_grib: t2m
+  - id: q16
+    query: "十米南北风分量官方短名"
+    type: zh_near
+    canonical_cds: 10m_v_component_of_wind
+    canonical_grib: v10
+    gold_source: era5_10m_v_component_of_wind.md
+    must_not_grib: u10
+  - id: q17
+    query: "海表水温在目录里叫什么"
+    type: zh_near
+    canonical_cds: sea_surface_temperature
+    canonical_grib: sst
+    gold_source: era5_sea_surface_temperature.md
+    must_not_grib: t2m
+  - id: q18
+    query: "SPI drought index for Shandong summer"
+    type: should_miss
+    canonical_cds: ""
+    canonical_grib: ""
+    gold_source: ""
+    must_not_grib: ""
+  - id: q19
+    query: "unregistered variable volumetric_soil_water_layer_1"
+    type: should_miss
+    canonical_cds: ""
+    canonical_grib: ""
+    gold_source: ""
+    must_not_grib: ""
+  - id: q20
+    query: "integrated vapor transport IVT for monsoon"
+    type: should_miss
+    canonical_cds: ""
+    canonical_grib: ""
+    gold_source: ""
+    must_not_grib: ""

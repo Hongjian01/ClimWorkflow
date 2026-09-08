@@ -1,0 +1,12 @@
+# 知识检索离线质量门（EVAL-008）。样本 n≈20，不是生产 SLO，不是 Bench-85。
+disclaimer: >
+  本门禁只约束 ClimWorkflow 仓库内 fixture 召回。不是 Langfuse/LangSmith 云看板，
+  不是企业知识库准确率，hash_dense 不是语义 Embedding。
+hybrid_recall_at_5_min: 0.85
+should_miss_all: true
+near_hybrid_hits_min: 2
+near_types:
+  - en_near
+  - zh_near
+embedding: deterministic_hash
+token_cost: null
