@@ -426,3 +426,23 @@ def loads_workspace_index(text: str) -> WorkspaceIndex:
 def loads_run_context(text: str) -> RunContext:
     """从 JSON 文本加载 RunContext（严格校验）。"""
     return RunContext.model_validate(json.loads(text))
+
+
+class ClimateQueryKnowledgeInput(BaseModel):
+    """G6 只读知识查询；禁止 code/shell/expr 与绝对路径字段。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, max_length=2000)
+    top_k: int = Field(default=5, ge=1, le=10)
+
+
+class KnowledgeHit(BaseModel):
+    """脱敏检索命中：相对路径 source，不含密钥。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_id: str = Field(min_length=1, max_length=256)
+    parent_text: str = Field(min_length=1, max_length=8000)
+    source: str = Field(min_length=1, max_length=512)
+    score: float

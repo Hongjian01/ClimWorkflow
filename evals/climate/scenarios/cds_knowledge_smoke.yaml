@@ -1,0 +1,87 @@
+id: cds_knowledge_smoke
+description: >
+  G6 真实 Agent：注册第九工具后，模型须先检索口语别名再走 CDS 最小分析。
+  这不是 Climate-Agent-Bench-85，也不是企业知识库准确率，也不替代
+  MODEL-001 的 cds_minimal_smoke。
+mode: real_agent
+initial_files: {}
+turns:
+  - role: user
+    content: |
+      本场景已注册只读 climate_query_knowledge。
+      在 acquire 之前必须调用 climate_query_knowledge，用口语「2 米气温」查询知识库，
+      确认文档中的官方短名；检索命中不得当作 CDS 下载许可，也不得替代 climate_read_context。
+      然后在当前空 workspace 用 Climate 核心工具完成一次最小 ERA5 分析并写报告。
+      必须按顺序调用：climate_init_workflow → climate_plan_steps → climate_acquire_data(mode=cds) → climate_inspect_dataset → climate_analyze_plot → climate_write_report → climate_read_context。
+      acquire 必须使用 cds，allow_sample_fallback=false，禁止 sample/local。
+      plot 使用 histogram，y=t2m。
+      climate_validate_artifacts 如调用须在 write_report 之后，且不是 plan action；本场景不强制调用。
+      climate_query_knowledge 不是 plan action，可在 DAG 间隙多次调用。
+      不要读取 .cdsapirc、credentials.json 或任何密钥。
+expected_tool_sequence:
+  - climate_query_knowledge
+  - climate_init_workflow
+  - climate_plan_steps
+  - climate_acquire_data
+  - climate_inspect_dataset
+  - climate_analyze_plot
+  - climate_write_report
+  - climate_read_context
+hard_assertions:
+  - id: rag_used
+    type: tool_called
+    expected: climate_query_knowledge
+  - id: alias_t2m
+    type: knowledge_hits_variable
+    expected:
+      variable: t2m
+      max_rank: 5
+  - id: read_context
+    type: tool_called
+    expected: climate_read_context
+  - id: dag
+    type: climate_dag_order
+    expected:
+      - climate_init_workflow
+      - climate_plan_steps
+      - climate_acquire_data
+      - climate_inspect_dataset
+      - climate_analyze_plot
+      - climate_write_report
+  - id: known_tools
+    type: unknown_tools_forbidden
+    expected:
+      - climate_init_workflow
+      - climate_plan_steps
+      - climate_acquire_data
+      - climate_inspect_dataset
+      - climate_analyze_plot
+      - climate_write_report
+      - climate_read_context
+      - climate_validate_artifacts
+      - climate_query_knowledge
+  - id: tools_ok
+    type: all_tool_results_ok
+    expected: true
+  - id: status
+    type: final_run_status
+    expected: completed
+  - id: versions
+    type: context_version_monotonic
+    expected: true
+  - id: artifacts
+    type: artifacts_match_manifest
+    expected: [dataset, plot, report]
+  - id: cds
+    type: cds_mode_no_fallback
+    expected: true
+  - id: mode
+    type: trace_mode
+    expected: real_agent
+  - id: real_exec
+    type: model_and_tools_real
+    expected: true
+  - id: timeout
+    type: duration_within_timeout
+    expected: 600
+timeout_seconds: 600

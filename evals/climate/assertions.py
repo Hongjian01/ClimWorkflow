@@ -125,6 +125,8 @@ def _evaluate_one(trace: TraceRecord, spec: HardAssertionSpec) -> AssertionResul
         unknown = [item.name for item in trace.tool_calls if item.name not in allowed]
         passed = not unknown
         return _ok(spec, passed, "ok" if passed else f"未知工具: {unknown}")
+    if spec.type == "tool_called":
+        return _tool_called(trace, spec)
     if spec.type == "hook_event":
         return _hook_event(trace, spec)
     if spec.type == "hook_provenance":
@@ -133,6 +135,8 @@ def _evaluate_one(trace: TraceRecord, spec: HardAssertionSpec) -> AssertionResul
         return _blocked_side_effect_free(trace, spec)
     if spec.type == "report_quality_rules":
         return _report_quality_rules(trace, spec)
+    if spec.type == "knowledge_hits_variable":
+        return _knowledge_hits_variable(trace, spec)
     return _fail(spec, f"未知 hard assertion 类型: {spec.type}")
 
 
@@ -268,6 +272,85 @@ def _report_quality_rules(trace: TraceRecord, spec: HardAssertionSpec) -> Assert
         False,
         f"报告规则未通过: chars={len(text)} missing={missing} score={score}",
     )
+
+
+def _tool_called(trace: TraceRecord, spec: HardAssertionSpec) -> AssertionResult:
+    """至少调用过指定工具一次；用于证明模型用上了可选工具。"""
+    expected = spec.expected
+    name: str | None = None
+    min_count = 1
+    require_ok = False
+    if isinstance(expected, str):
+        name = expected
+    elif isinstance(expected, dict):
+        raw_name = expected.get("name")
+        name = raw_name if isinstance(raw_name, str) else None
+        min_count = int(expected.get("min_count") or 1)
+        require_ok = expected.get("require_ok") is True
+    if not name:
+        return _fail(spec, "tool_called 的 expected 必须是工具名或含 name 的映射")
+    matched = [
+        item
+        for item in trace.tool_calls
+        if item.name == name and (not require_ok or item.is_error is False)
+    ]
+    passed = len(matched) >= min_count
+    return _ok(
+        spec,
+        passed,
+        "ok" if passed else f"未调用 {name!r}（count={len(matched)} < {min_count}）",
+    )
+
+
+def _knowledge_hits_variable(trace: TraceRecord, spec: HardAssertionSpec) -> AssertionResult:
+    """别名查询必须在融合 Top-K 父段中命中官方变量名；source 必须是相对路径。"""
+    expected = spec.expected
+    if not isinstance(expected, dict):
+        return _fail(spec, "knowledge_hits_variable 的 expected 必须是映射")
+    query = expected.get("query")
+    variable = expected.get("variable")
+    max_rank = int(expected.get("max_rank") or 5)
+    candidates = []
+    for item in trace.tool_calls:
+        if item.name != "climate_query_knowledge":
+            continue
+        recorded = (item.input_redacted or {}).get("query")
+        if recorded is None:
+            recorded = (item.output_redacted or {}).get("query")
+        if query is not None and recorded != query:
+            continue
+        candidates.append(item)
+    if not candidates:
+        label = query if query is not None else "climate_query_knowledge"
+        return _ok(spec, False, f"未找到查询 {label!r}")
+    last_error: str | None = None
+    for matched in candidates:
+        if matched.is_error:
+            last_error = str(matched.error_code)
+            continue
+        hits = (matched.output_redacted or {}).get("hits") or []
+        if not isinstance(hits, list):
+            last_error = "hits 不是列表"
+            continue
+        texts: list[str] = []
+        absolute = False
+        for hit in hits[:max_rank]:
+            if not isinstance(hit, dict):
+                continue
+            source = str(hit.get("source") or "")
+            if source.startswith("/") or (len(source) >= 3 and source[1:3] in {":/", ":\\"}):
+                absolute = True
+                break
+            texts.append(str(hit.get("parent_text") or ""))
+        if absolute:
+            return _ok(spec, False, "source 含绝对路径")
+        blob = "\n".join(texts)
+        if isinstance(variable, str) and variable in blob:
+            return _ok(spec, True, "ok")
+        last_error = f"Top-{max_rank} 未命中 {variable!r}"
+    if last_error and all(item.is_error for item in candidates):
+        return _ok(spec, False, f"查询失败: {last_error}")
+    return _ok(spec, False, last_error or f"Top-{max_rank} 未命中 {variable!r}")
 
 
 def _report_has_secret(text: str) -> bool:

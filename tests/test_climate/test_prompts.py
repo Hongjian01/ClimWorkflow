@@ -64,6 +64,12 @@ def test_eval_system_prompt_embeds_skill_and_permission() -> None:
     assert "七个工具" not in prompt
     assert "Plan-Agent" in prompt
     assert "不得摘要" in prompt
+    assert "默认未注册" in prompt
+    enabled = build_eval_system_prompt(
+        "skill-body", permission_mode="full_auto", include_knowledge=True
+    )
+    assert "已注册只读 climate_query_knowledge" in enabled
+    assert "默认未注册" not in enabled
     from evals.climate.real_agent import _system_prompt
 
     source = _system_prompt.__code__.co_names

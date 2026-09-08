@@ -36,6 +36,9 @@ ERROR_RETRYABLE: dict[str, bool] = {
     "CLIMATE_HOOK_BLOCKED": False,
     "CLIMATE_VALIDATION_FAILED": False,
     "CLIMATE_METADATA_REJECTED": False,
+    "CLIMATE_KNOWLEDGE_NOT_FOUND": False,
+    "CLIMATE_KNOWLEDGE_MISS": True,
+    "CLIMATE_KNOWLEDGE_CORRUPT": False,
 }
 
 # details 允许的安全诊断键（ERR-002）
@@ -57,6 +60,9 @@ _DETAILS_ALLOWLIST: frozenset[str] = frozenset(
         "candidate_index",
         "candidate_count",
         "winning_candidate",
+        "chunk_id",
+        "source",
+        "hit_count",
     }
 )
 

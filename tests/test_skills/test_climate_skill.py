@@ -99,3 +99,17 @@ def test_climate_skill_natural_language_to_four_actions_and_forbids_free_plan() 
     assert "Coding-Agent" in content
     assert "静态 CDS 元数据目录" in content
     assert "最多 3 个候选" in content
+
+
+def test_climate_skill_knowledge_query_is_optional_and_not_recovery() -> None:
+    """SKILL-003：可查询别名；不得当闸门/进度；不是第五类 action。"""
+    content = SKILL_PATH.read_text(encoding="utf-8")
+    assert "climate_query_knowledge" in content
+    assert "不得用检索替代 climate_read_context" in content
+    assert "检索命中" in content or "检索" in content
+    assert "静态 CDS 元数据目录" in content
+    assert "第五类" in content
+    assert "climate_read_context" in content
+    lowered = content.lower()
+    assert "exec(" not in lowered
+    assert "subprocess" not in lowered

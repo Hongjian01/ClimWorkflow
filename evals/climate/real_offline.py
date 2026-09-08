@@ -40,8 +40,10 @@ FIXTURE_DIR = ROOT / "evals" / "climate" / "fixtures"
 SUITE_VERSION = "g3-real-offline"
 SESSION_SENTINEL = "eval-session-1-sentinel"
 OUTPUT_GUARD_SCENARIO_ID = "pre_tool_output_guard"
+KNOWLEDGE_ALIAS_SCENARIO_ID = "knowledge_alias_smoke"
 OUTPUT_GUARD_MATCHER = "climate_write_report"
 OUTPUT_GUARD_MARKER = "blocked-output-secret"
+KNOWLEDGE_FIXTURE_DIR = ROOT / "tests" / "fixtures" / "climate_knowledge"
 
 
 class NetworkBlockedError(OSError):
@@ -87,6 +89,8 @@ async def run_real_offline_async(scenario: Scenario, *, workspace: Path) -> Trac
     workspace = workspace.resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     _materialize_inputs(scenario, workspace)
+    if scenario.id == KNOWLEDGE_ALIAS_SCENARIO_ID:
+        _prepare_knowledge_index(workspace)
     started = time.perf_counter()
     started_at = utc_now()
     tool_calls: list[dict[str, Any]] = []
@@ -128,7 +132,9 @@ async def run_real_offline_async(scenario: Scenario, *, workspace: Path) -> Trac
                     recovery["session_boundary"] = True
                     gc.collect()
                     recovery["session1_destroyed"] = True
-                registry = create_climate_tool_registry()
+                registry = create_climate_tool_registry(
+                    include_knowledge=scenario.id == KNOWLEDGE_ALIAS_SCENARIO_ID
+                )
                 metadata: dict[str, Any] = {}
                 if session_id == 1:
                     metadata["eval_session"] = SESSION_SENTINEL
@@ -302,6 +308,17 @@ def _materialize_inputs(scenario: Scenario, workspace: Path) -> None:
         dest = _safe_workspace_dest(workspace, dest_rel)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(src.read_bytes())
+
+
+def _prepare_knowledge_index(workspace: Path) -> None:
+    """EVAL-005：从仓库 fixture 重建索引；不是 Agent ingest 工具。"""
+    dest = workspace / "corpus"
+    dest.mkdir(parents=True, exist_ok=True)
+    for src in sorted(KNOWLEDGE_FIXTURE_DIR.glob("*.md")):
+        (dest / src.name).write_bytes(src.read_bytes())
+    from openharness.climate.knowledge import rebuild_knowledge_index
+
+    rebuild_knowledge_index(workspace, "corpus")
 
 
 def _safe_workspace_dest(workspace: Path, rel: str) -> Path:
@@ -650,6 +667,26 @@ def _summarize_output(tool: BaseTool, payload: dict[str, Any], workspace: Path) 
             summary[key] = data[key]
         elif key in payload:
             summary[key] = payload[key]
+    if tool.name == "climate_query_knowledge":
+        if isinstance(data.get("hit_count"), int):
+            summary["hit_count"] = data["hit_count"]
+        if isinstance(data.get("query"), str):
+            summary["query"] = data["query"]
+        hits = data.get("hits")
+        if isinstance(hits, list):
+            bounded: list[dict[str, Any]] = []
+            for hit in hits[:10]:
+                if not isinstance(hit, dict):
+                    continue
+                bounded.append(
+                    {
+                        "chunk_id": hit.get("chunk_id"),
+                        "parent_text": str(hit.get("parent_text") or "")[:2000],
+                        "source": hit.get("source"),
+                        "score": hit.get("score"),
+                    }
+                )
+            summary["hits"] = bounded
     if tool.name == "climate_read_context":
         for key in ("status", "run_id", "context_version", "active_run_id"):
             if key in payload and key not in summary:

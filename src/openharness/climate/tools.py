@@ -15,6 +15,8 @@ from openharness.climate.errors import (
     failure_envelope,
     success_envelope,
 )
+from openharness.climate.knowledge import query_knowledge
+from openharness.climate.models import ClimateQueryKnowledgeInput
 from openharness.climate.pipeline import (
     acquire_data,
     analyze_plot,
@@ -407,3 +409,36 @@ class ClimateValidateArtifactsTool(ClimateTool):
                 run_id=arguments.run_id,
             ),
         )
+
+
+class ClimateQueryKnowledgeTool(ClimateTool):
+    name = "climate_query_knowledge"
+    description = TOOL_DESCRIPTIONS["climate_query_knowledge"]
+    input_model = ClimateQueryKnowledgeInput
+
+    def is_read_only(self, arguments: BaseModel) -> bool:
+        del arguments
+        return True
+
+    async def execute(
+        self, arguments: ClimateQueryKnowledgeInput, context: ToolExecutionContext
+    ) -> ToolResult:
+        workspace = Path(context.cwd).resolve()
+
+        def _run() -> tuple[dict[str, Any], None, None]:
+            hits = query_knowledge(
+                workspace,
+                query=arguments.query,
+                top_k=arguments.top_k,
+            )
+            return (
+                {
+                    "query": arguments.query,
+                    "hit_count": len(hits),
+                    "hits": hits,
+                },
+                None,
+                None,
+            )
+
+        return self._result(_run)

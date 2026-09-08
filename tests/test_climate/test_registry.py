@@ -263,3 +263,27 @@ def test_default_registry_includes_validate_and_keeps_core_seven() -> None:
     ]
     assert default_climate == list(_TODAY_TOOL_NAMES)
     assert "climate_validate_artifacts" in default_climate
+
+
+def test_optional_knowledge_tool_does_not_replace_core_eight() -> None:
+    """RAG-003：默认仍八工具；include_knowledge=True 可装第九工具且不覆盖同名。"""
+    default = create_climate_tool_registry()
+    names = [tool.name for tool in default.list_tools()]
+    assert "climate_query_knowledge" not in names
+    assert names == list(_TODAY_TOOL_NAMES)
+    enabled = create_climate_tool_registry(include_knowledge=True)
+    enabled_names = [tool.name for tool in enabled.list_tools()]
+    assert enabled_names[:8] == list(_TODAY_TOOL_NAMES)
+    assert enabled_names[8] == "climate_query_knowledge"
+    parsed = enabled.get("climate_query_knowledge")
+    assert parsed is not None
+    assert parsed.is_read_only(parsed.input_model.model_validate({"query": "t2m"})) is True
+    with pytest.raises(ValueError, match="climate_query_knowledge"):
+        enabled.register(parsed)
+    default_climate = [
+        tool.name
+        for tool in create_default_tool_registry().list_tools()
+        if tool.name.startswith("climate_")
+    ]
+    assert "climate_query_knowledge" not in default_climate
+    assert default_climate == list(_TODAY_TOOL_NAMES)

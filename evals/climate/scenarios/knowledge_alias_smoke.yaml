@@ -1,0 +1,61 @@
+id: knowledge_alias_smoke
+description: >
+  离线别名检索硬断言。这不是 Climate-Agent-Bench-85，也不是企业知识库准确率
+  （不是 Hit Rate 92% 一类外部模板数字）。默认禁网。
+mode: real_offline
+initial_files: {}
+turns:
+  - role: user
+    content: 用文档解释 2 米气温的官方短名
+expected_tool_sequence:
+  - climate_query_knowledge
+  - climate_query_knowledge
+  - climate_query_knowledge
+tool_invocations:
+  - name: climate_query_knowledge
+    session: 1
+    input:
+      query: 2m temperature
+      top_k: 5
+  - name: climate_query_knowledge
+    session: 1
+    input:
+      query: 2 metre temperature
+      top_k: 5
+  - name: climate_query_knowledge
+    session: 1
+    input:
+      query: 2 米气温
+      top_k: 5
+hard_assertions:
+  - id: seq
+    type: tool_sequence
+    expected:
+      - climate_query_knowledge
+      - climate_query_knowledge
+      - climate_query_knowledge
+  - id: tools_ok
+    type: all_tool_results_ok
+    expected: true
+  - id: alias_2m
+    type: knowledge_hits_variable
+    expected:
+      query: 2m temperature
+      variable: t2m
+      max_rank: 5
+  - id: alias_metre
+    type: knowledge_hits_variable
+    expected:
+      query: 2 metre temperature
+      variable: t2m
+      max_rank: 5
+  - id: alias_zh
+    type: knowledge_hits_variable
+    expected:
+      query: 2 米气温
+      variable: t2m
+      max_rank: 5
+  - id: no_net
+    type: network_isolated
+    expected: true
+timeout_seconds: 60

@@ -10,11 +10,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from openharness.climate.errors import redact_secrets
+from openharness.climate.errors import ClimateError, redact_secrets
 from openharness.climate.models import loads_run_context, loads_workspace_index
 from openharness.climate.pipeline import utc_now
 from openharness.climate.prompts import build_eval_system_prompt
-from openharness.climate.registry import create_climate_tool_registry
+from openharness.climate.registry import ClimateToolRegistry, create_climate_tool_registry
 from openharness.config.settings import PermissionSettings, load_settings
 from openharness.engine.query_engine import QueryEngine
 from openharness.engine.stream_events import (
@@ -29,10 +29,11 @@ from openharness.ui.runtime import _resolve_api_client_from_settings
 
 from evals.climate.agent_config import ClimateRealConfig
 from evals.climate.models import EvalMode, Scenario, TraceRecord
-from evals.climate.real_offline import ROOT
+from evals.climate.real_offline import ROOT, _prepare_knowledge_index
 
 SUITE_VERSION = "g4-real-agent"
 SKILL_PATH = ROOT / ".openharness" / "skills" / "climate-ds" / "SKILL.md"
+KNOWLEDGE_REAL_SCENARIO_ID = "cds_knowledge_smoke"
 
 
 def run_real_agent_once(
@@ -59,6 +60,10 @@ async def run_real_agent_once_async(
 ) -> TraceRecord:
     workspace = workspace.resolve()
     workspace.mkdir(parents=True, exist_ok=True)
+    include_knowledge = _include_knowledge(scenario)
+    if include_knowledge:
+        # 评测侧预建 fixture 索引；不是 Agent ingest 工具
+        _prepare_knowledge_index(workspace)
     started = time.perf_counter()
     started_at = utc_now()
     tool_calls: list[dict[str, Any]] = []
@@ -79,9 +84,9 @@ async def run_real_agent_once_async(
     )
     settings = settings.materialize_active_profile()
     api_client = _resolve_api_client_from_settings(settings)
-    registry = create_climate_tool_registry()
+    registry = registry_for_scenario(scenario)
     checker = build_permission_checker(config)
-    system_prompt = _system_prompt(config)
+    system_prompt = _system_prompt(config, include_knowledge=include_knowledge)
     user_prompt = _user_prompt(scenario, config, run_index)
     engine = QueryEngine(
         api_client=api_client,
@@ -109,7 +114,9 @@ async def run_real_agent_once_async(
                         {
                             "sequence": sequence,
                             "name": event.tool_name,
-                            "input_redacted": {"note": "omitted"},
+                            "input_redacted": _started_input_redacted(
+                                event.tool_name, event.tool_input, workspace
+                            ),
                             "is_error": False,
                             "error_code": None,
                             "duration_ms": 0,
@@ -144,6 +151,9 @@ async def run_real_agent_once_async(
             merged = dict(call.get("output_redacted") or {})
             merged.update(acquire_fields)
             call["output_redacted"] = merged
+        if call["name"] == "climate_query_knowledge":
+            # 知识工具不写 Context；事件输出若被截断则从同 workspace 索引重放
+            _replay_knowledge_hits_if_needed(call, workspace)
     final_status = context_status if error_code is None else "failed"
     trace = TraceRecord.model_validate(
         {
@@ -181,9 +191,23 @@ async def _auto_allow(_tool: str, _input: str) -> bool:
     return True
 
 
-def _system_prompt(config: ClimateRealConfig) -> str:
+def _include_knowledge(scenario: Scenario) -> bool:
+    """仅 cds_knowledge_smoke 打开第九工具；默认 real_agent 仍八工具。"""
+    return scenario.id == KNOWLEDGE_REAL_SCENARIO_ID
+
+
+def registry_for_scenario(scenario: Scenario) -> ClimateToolRegistry:
+    """按场景决定是否注册 climate_query_knowledge；默认 registry 仍不含第九工具。"""
+    return create_climate_tool_registry(include_knowledge=_include_knowledge(scenario))
+
+
+def _system_prompt(config: ClimateRealConfig, *, include_knowledge: bool = False) -> str:
     skill = SKILL_PATH.read_text(encoding="utf-8") if SKILL_PATH.is_file() else ""
-    return build_eval_system_prompt(skill, permission_mode=config.permission_mode)
+    return build_eval_system_prompt(
+        skill,
+        permission_mode=config.permission_mode,
+        include_knowledge=include_knowledge,
+    )
 
 
 def _user_prompt(scenario: Scenario, config: ClimateRealConfig, run_index: int) -> str:
@@ -231,11 +255,25 @@ def _stamp_tool_duration(
             return
 
 
+def _started_input_redacted(
+    tool_name: str, tool_input: dict[str, Any] | None, workspace: Path
+) -> dict[str, Any]:
+    """默认省略输入；知识查询只保留 query，供 RAG 断言使用。"""
+    if tool_name != "climate_query_knowledge" or not isinstance(tool_input, dict):
+        return {"note": "omitted"}
+    query = tool_input.get("query")
+    if not isinstance(query, str) or not query.strip():
+        return {"note": "omitted"}
+    return {"query": redact_secrets(query, workspace=workspace)}
+
+
 def _apply_tool_result(tool_calls: list[dict[str, Any]], event: ToolExecutionCompleted, workspace: Path) -> None:
-    if not tool_calls:
-        return
-    last = tool_calls[-1]
-    if last["name"] != event.tool_name:
+    last = None
+    for call in reversed(tool_calls):
+        if call["name"] == event.tool_name:
+            last = call
+            break
+    if last is None:
         return
     payload = _parse_envelope(event.output, workspace)
     last["is_error"] = bool(event.is_error or payload.get("ok") is False)
@@ -244,17 +282,65 @@ def _apply_tool_result(tool_calls: list[dict[str, Any]], event: ToolExecutionCom
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     last["output_redacted"] = _public_output(event.tool_name, data, workspace)
     last["context_version"] = data.get("version")
+    if event.tool_name == "climate_query_knowledge":
+        query = data.get("query")
+        if isinstance(query, str) and query.strip():
+            last["input_redacted"] = {
+                "query": redact_secrets(query, workspace=workspace),
+            }
+
+
+def _replay_knowledge_hits_if_needed(call: dict[str, Any], workspace: Path) -> None:
+    """知识命中不进 Context；若事件输出丢失 hits，用同一索引确定性重放。"""
+    if call.get("is_error"):
+        return
+    output = call.get("output_redacted") or {}
+    hits = output.get("hits")
+    if isinstance(hits, list) and hits:
+        return
+    query = (call.get("input_redacted") or {}).get("query")
+    if not isinstance(query, str) or not query.strip():
+        query = output.get("query")
+    if not isinstance(query, str) or not query.strip():
+        return
+    from openharness.climate.knowledge import query_knowledge
+
+    try:
+        replayed = query_knowledge(workspace, query=query, top_k=5)
+    except ClimateError:
+        return
+    data = {"query": query, "hit_count": len(replayed), "hits": replayed}
+    call["output_redacted"] = _public_output("climate_query_knowledge", data, workspace)
 
 
 def _parse_envelope(raw: str, workspace: Path) -> dict[str, Any]:
     text = redact_secrets(raw or "", workspace=workspace)
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return {"ok": False, "error": {"code": "CLIMATE_EXTERNAL_FAILED"}}
-    if not isinstance(payload, dict):
-        return {"ok": False, "error": {"code": "CLIMATE_EXTERNAL_FAILED"}}
+    payload = _extract_json_object(text)
+    if payload is None:
+        return {}
     return payload
+
+
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    """解析完整 JSON，或从截断预览中取出第一个对象。"""
+    stripped = (text or "").strip()
+    if not stripped:
+        return None
+    try:
+        payload = json.loads(stripped)
+        if isinstance(payload, dict):
+            return payload
+    except json.JSONDecodeError:
+        pass
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        payload = json.loads(stripped[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _public_output(tool_name: str, data: dict[str, Any], workspace: Path) -> dict[str, Any]:
@@ -271,6 +357,8 @@ def _public_output(tool_name: str, data: dict[str, Any], workspace: Path) -> dic
         "version",
         "status",
         "variables",
+        "query",
+        "hit_count",
     )
     out: dict[str, Any] = {}
     for key in allowed:
@@ -283,6 +371,26 @@ def _public_output(tool_name: str, data: dict[str, Any], workspace: Path) -> dic
     if tool_name == "climate_write_report":
         out.setdefault("has_relative_plot", True)
         out.setdefault("has_absolute_workspace", False)
+    if tool_name == "climate_query_knowledge":
+        hits = data.get("hits")
+        if isinstance(hits, list):
+            bounded: list[dict[str, Any]] = []
+            for hit in hits[:10]:
+                if not isinstance(hit, dict):
+                    continue
+                source = hit.get("source")
+                parent = str(hit.get("parent_text") or "")[:2000]
+                bounded.append(
+                    {
+                        "chunk_id": hit.get("chunk_id"),
+                        "parent_text": redact_secrets(parent, workspace=workspace),
+                        "source": redact_secrets(str(source), workspace=workspace)
+                        if isinstance(source, str)
+                        else source,
+                        "score": hit.get("score"),
+                    }
+                )
+            out["hits"] = bounded
     return out
 
 

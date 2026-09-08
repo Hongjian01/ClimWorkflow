@@ -37,7 +37,7 @@ ClimateAgent 论文用多智能体写下载脚本和分析代码。ClimWorkflow 
 - `write_report`
 
 标准四步：acquire → inspect → plot → report。不得发明第五类 action，不得把 SPI / IVT / TC
-等论文子步骤写成新的 plan action。
+等论文子步骤写成新的 plan action。`climate_query_knowledge` 不是 plan action。
 
 ### 规划示例
 
@@ -61,6 +61,17 @@ ClimateAgent 论文用多智能体写下载脚本和分析代码。ClimWorkflow 
 
 默认已注册 `climate_validate_artifacts`。建议在 `climate_write_report` 成功后调用，做只读
 规则校验。它不是 plan action，不得当成第五类科学步骤；DAG 硬断言不强制调用。
+
+## 文档检索（可选第九工具）
+
+acquire / 写报告前**可以**调用 `climate_query_knowledge`，用文档解释别名、单位与局限
+（例如口语「2 米气温」对应文档中的 `t2m`）。默认未注册，不是 DAG 硬步骤。
+
+- 下载前**必须**先通过静态 CDS 元数据目录；检索命中 ≠ 允许下载。
+- 中断、压缩或报错后**必须**先 `climate_read_context`；**不得用检索替代 climate_read_context**，
+  不得用旧文档猜测当前步骤已成功。
+- 禁止把检索写成第五类 action。
+- 报告中的数字仍以 inspect profile 为准；文档只提供含义、单位与局限。
 
 ## 目录约定（对应论文 data/ 与 code_output/）
 
@@ -101,6 +112,7 @@ ClimateAgent 论文用多智能体写下载脚本和分析代码。ClimWorkflow 
 - 禁止声称可以增加 SPI / IVT / TC 或其他自由科学 action。
 - 禁止建议执行任意 Python、Shell 或生成代码沙箱。
 - 禁止 Selenium / 浏览器自动化抓取 CDS 门户。
+- 禁止用 `climate_query_knowledge` 代替目录闸门或 `climate_read_context`。
 
 ## 范围
 

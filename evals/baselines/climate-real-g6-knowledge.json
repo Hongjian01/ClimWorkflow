@@ -1,0 +1,922 @@
+{
+  "baseline_published": true,
+  "config": {
+    "allow_sample_fallback": false,
+    "cds_request": {
+      "allow_sample_fallback": false,
+      "area": [
+        40.5,
+        116.0,
+        39.5,
+        117.0
+      ],
+      "dataset": "reanalysis-era5-single-levels",
+      "date_end": "2025-01-01",
+      "date_start": "2025-01-01",
+      "format": "netcdf",
+      "variables": [
+        "2m_temperature"
+      ]
+    },
+    "effort": "medium",
+    "max_turns": 200,
+    "model": "deepseek-v4-pro",
+    "permission_mode": "full_auto",
+    "profile": "openai-compatible",
+    "provider": "openai",
+    "scenario_id": "cds_knowledge_smoke",
+    "schema_version": "g4-climate-real-v1",
+    "skill": "climate-ds",
+    "timeout_seconds": 600
+  },
+  "counts_toward_real_pass_rate": true,
+  "dirty": true,
+  "dirty_digest": "e33be9a8fc5f038b88c1a7e264f0add532ce0a0c6465ae09248c6792ce45edad",
+  "fingerprint": "c635fd27e7b251ae76cd5e7491ee04ccd728b6e22db073df7f6cb80c064356aa",
+  "git_commit": "8cb1ad6",
+  "min_passes": 2,
+  "mode": "real_agent",
+  "model_invoked": true,
+  "passes": 3,
+  "results": [
+    {
+      "error_code": null,
+      "passed": true,
+      "run_index": 1,
+      "trace": {
+        "artifact_manifest": [
+          {
+            "kind": "dataset",
+            "matches_context": true,
+            "path": ".climate/data/2d539234-c0fa-40b3-96a2-4f86011ff37d/cds-acquire-era5-t2m.nc"
+          },
+          {
+            "kind": "profile",
+            "matches_context": true,
+            "path": ".climate/output/2d539234-c0fa-40b3-96a2-4f86011ff37d/profile.json"
+          },
+          {
+            "kind": "plot",
+            "matches_context": true,
+            "path": ".climate/output/2d539234-c0fa-40b3-96a2-4f86011ff37d/plot-plot-era5-t2m-hist.png"
+          },
+          {
+            "kind": "report",
+            "matches_context": true,
+            "path": ".climate/output/2d539234-c0fa-40b3-96a2-4f86011ff37d/report.md"
+          }
+        ],
+        "assertion_results": [
+          {
+            "id": "rag_used",
+            "message": "ok",
+            "passed": true,
+            "type": "tool_called"
+          },
+          {
+            "id": "alias_t2m",
+            "message": "ok",
+            "passed": true,
+            "type": "knowledge_hits_variable"
+          },
+          {
+            "id": "read_context",
+            "message": "ok",
+            "passed": true,
+            "type": "tool_called"
+          },
+          {
+            "id": "dag",
+            "message": "ok",
+            "passed": true,
+            "type": "climate_dag_order"
+          },
+          {
+            "id": "known_tools",
+            "message": "ok",
+            "passed": true,
+            "type": "unknown_tools_forbidden"
+          },
+          {
+            "id": "tools_ok",
+            "message": "ok",
+            "passed": true,
+            "type": "all_tool_results_ok"
+          },
+          {
+            "id": "status",
+            "message": "ok",
+            "passed": true,
+            "type": "final_run_status"
+          },
+          {
+            "id": "versions",
+            "message": "ok",
+            "passed": true,
+            "type": "context_version_monotonic"
+          },
+          {
+            "id": "artifacts",
+            "message": "ok",
+            "passed": true,
+            "type": "artifacts_match_manifest"
+          },
+          {
+            "id": "cds",
+            "message": "ok",
+            "passed": true,
+            "type": "cds_mode_no_fallback"
+          },
+          {
+            "id": "mode",
+            "message": "ok",
+            "passed": true,
+            "type": "trace_mode"
+          },
+          {
+            "id": "real_exec",
+            "message": "ok",
+            "passed": true,
+            "type": "model_and_tools_real"
+          },
+          {
+            "id": "timeout",
+            "message": "ok",
+            "passed": true,
+            "type": "duration_within_timeout"
+          }
+        ],
+        "context_versions": [
+          11
+        ],
+        "counts_toward_real_pass_rate": true,
+        "duration_ms": 146630,
+        "final_context_version": 11,
+        "final_run_status": "completed",
+        "finished_at": "2026-09-08T10:03:12Z",
+        "hook_events": [],
+        "mode": "real_agent",
+        "model_invoked": true,
+        "network_isolated": false,
+        "recovery": null,
+        "run_id": "2d539234-c0fa-40b3-96a2-4f86011ff37d",
+        "scenario_id": "cds_knowledge_smoke",
+        "started_at": "2026-09-08T10:00:45Z",
+        "suite_version": "g4-real-agent",
+        "synthetic": false,
+        "tool_calls": [
+          {
+            "context_version": null,
+            "duration_ms": 135959,
+            "error_code": null,
+            "input_redacted": {
+              "query": "2 米气温 官方短名 变量别名 ERA5"
+            },
+            "is_error": false,
+            "name": "climate_query_knowledge",
+            "output_redacted": {
+              "hit_count": 3,
+              "hits": [
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p1-c0",
+                  "parent_text": "## 2 metre temperature\n\n官方短名 **t2m**。文档与口语别名包括：2m temperature、2 metre temperature、2 米气温。\n单位为开尔文（K）。该变量描述距地约 2 米的气温，常用于地面温度分析。\n数字与统计仍以 inspect profile 为准；本文只解释含义、单位与局限。",
+                  "score": 0.032787,
+                  "source": "corpus/era5_variable_aliases.md"
+                },
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p2-c0",
+                  "parent_text": "## 10 metre U wind component\n\n官方短名 **u10**。别名：10m u-wind、10 metre U wind component、10 米东西风。\n这是干扰变量，用于证明检索不是「任意查询都返回第一段」。",
+                  "score": 0.032258,
+                  "source": "corpus/era5_variable_aliases.md"
+                },
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p0-c0",
+                  "parent_text": "# ERA5 单层变量别名（静态摘录）\n\nsource_url: https:<redacted>\nretrieved: 2026-08-30\n\n本页是 ClimWorkflow G6 仓库 fixture，不是 CDS 门户实时抓取。检索命中不得当作下载许可，\n也不得替代磁盘 Context。",
+                  "score": 0.031746,
+                  "source": "corpus/era5_variable_aliases.md"
+                }
+              ],
+              "query": "2 米气温 官方短名 变量别名 ERA5"
+            },
+            "sequence": 1,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 298,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_init_workflow",
+            "output_redacted": {
+              "status": "initialized"
+            },
+            "sequence": 2,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 154,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_plan_steps",
+            "output_redacted": {
+              "status": "running"
+            },
+            "sequence": 3,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 95105,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_acquire_data",
+            "output_redacted": {
+              "artifact_id": "dataset-acquire-era5-t2m",
+              "effective_mode": "cds",
+              "media_type": "application/x-netcdf",
+              "path": ".climate/data/2d539234-c0fa-40b3-96a2-4f86011ff37d/cds-acquire-era5-t2m.nc",
+              "requested_mode": "cds"
+            },
+            "sequence": 4,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 56,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_inspect_dataset",
+            "output_redacted": {
+              "artifact_id": "profile-primary",
+              "format": "netcdf",
+              "path": ".climate/data/2d539234-c0fa-40b3-96a2-4f86011ff37d/cds-acquire-era5-t2m.nc",
+              "variables": [
+                "number",
+                "expver",
+                "t2m"
+              ]
+            },
+            "sequence": 5,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 582,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_analyze_plot",
+            "output_redacted": {
+              "artifact_id": "plot-plot-era5-t2m-hist",
+              "fallback_reason": null,
+              "media_type": "image/png",
+              "path": ".climate/output/2d539234-c0fa-40b3-96a2-4f86011ff37d/plot-plot-era5-t2m-hist.png"
+            },
+            "sequence": 6,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 276,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_write_report",
+            "output_redacted": {
+              "artifact_id": "report-primary",
+              "has_absolute_workspace": false,
+              "has_relative_plot": true,
+              "media_type": "text/markdown",
+              "path": ".climate/output/2d539234-c0fa-40b3-96a2-4f86011ff37d/report.md"
+            },
+            "sequence": 7,
+            "session": 1
+          },
+          {
+            "context_version": 11,
+            "duration_ms": 136,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_read_context",
+            "output_redacted": {
+              "status": "completed",
+              "version": 11
+            },
+            "sequence": 8,
+            "session": 1
+          }
+        ],
+        "tools_executed": true
+      },
+      "workspace_isolated": true
+    },
+    {
+      "error_code": null,
+      "passed": true,
+      "run_index": 2,
+      "trace": {
+        "artifact_manifest": [
+          {
+            "kind": "dataset",
+            "matches_context": true,
+            "path": ".climate/data/fe360438-eb90-45ae-9c84-60a5b3eb270c/cds-acquire-era5-t2m-beijing.nc"
+          },
+          {
+            "kind": "profile",
+            "matches_context": true,
+            "path": ".climate/output/fe360438-eb90-45ae-9c84-60a5b3eb270c/profile.json"
+          },
+          {
+            "kind": "plot",
+            "matches_context": true,
+            "path": ".climate/output/fe360438-eb90-45ae-9c84-60a5b3eb270c/plot-plot-t2m-histogram.png"
+          },
+          {
+            "kind": "report",
+            "matches_context": true,
+            "path": ".climate/output/fe360438-eb90-45ae-9c84-60a5b3eb270c/report.md"
+          }
+        ],
+        "assertion_results": [
+          {
+            "id": "rag_used",
+            "message": "ok",
+            "passed": true,
+            "type": "tool_called"
+          },
+          {
+            "id": "alias_t2m",
+            "message": "ok",
+            "passed": true,
+            "type": "knowledge_hits_variable"
+          },
+          {
+            "id": "read_context",
+            "message": "ok",
+            "passed": true,
+            "type": "tool_called"
+          },
+          {
+            "id": "dag",
+            "message": "ok",
+            "passed": true,
+            "type": "climate_dag_order"
+          },
+          {
+            "id": "known_tools",
+            "message": "ok",
+            "passed": true,
+            "type": "unknown_tools_forbidden"
+          },
+          {
+            "id": "tools_ok",
+            "message": "ok",
+            "passed": true,
+            "type": "all_tool_results_ok"
+          },
+          {
+            "id": "status",
+            "message": "ok",
+            "passed": true,
+            "type": "final_run_status"
+          },
+          {
+            "id": "versions",
+            "message": "ok",
+            "passed": true,
+            "type": "context_version_monotonic"
+          },
+          {
+            "id": "artifacts",
+            "message": "ok",
+            "passed": true,
+            "type": "artifacts_match_manifest"
+          },
+          {
+            "id": "cds",
+            "message": "ok",
+            "passed": true,
+            "type": "cds_mode_no_fallback"
+          },
+          {
+            "id": "mode",
+            "message": "ok",
+            "passed": true,
+            "type": "trace_mode"
+          },
+          {
+            "id": "real_exec",
+            "message": "ok",
+            "passed": true,
+            "type": "model_and_tools_real"
+          },
+          {
+            "id": "timeout",
+            "message": "ok",
+            "passed": true,
+            "type": "duration_within_timeout"
+          }
+        ],
+        "context_versions": [
+          11
+        ],
+        "counts_toward_real_pass_rate": true,
+        "duration_ms": 98356,
+        "final_context_version": 11,
+        "final_run_status": "completed",
+        "finished_at": "2026-09-08T10:04:50Z",
+        "hook_events": [],
+        "mode": "real_agent",
+        "model_invoked": true,
+        "network_isolated": false,
+        "recovery": null,
+        "run_id": "fe360438-eb90-45ae-9c84-60a5b3eb270c",
+        "scenario_id": "cds_knowledge_smoke",
+        "started_at": "2026-09-08T10:03:12Z",
+        "suite_version": "g4-real-agent",
+        "synthetic": false,
+        "tool_calls": [
+          {
+            "context_version": null,
+            "duration_ms": 82692,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_init_workflow",
+            "output_redacted": {
+              "status": "initialized"
+            },
+            "sequence": 1,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 215,
+            "error_code": null,
+            "input_redacted": {
+              "query": "2 米气温 官方短名 t2m 2m_temperature"
+            },
+            "is_error": false,
+            "name": "climate_query_knowledge",
+            "output_redacted": {
+              "hit_count": 3,
+              "hits": [
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p1-c0",
+                  "parent_text": "## 2 metre temperature\n\n官方短名 **t2m**。文档与口语别名包括：2m temperature、2 metre temperature、2 米气温。\n单位为开尔文（K）。该变量描述距地约 2 米的气温，常用于地面温度分析。\n数字与统计仍以 inspect profile 为准；本文只解释含义、单位与局限。",
+                  "score": 0.032787,
+                  "source": "corpus/era5_variable_aliases.md"
+                },
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p2-c0",
+                  "parent_text": "## 10 metre U wind component\n\n官方短名 **u10**。别名：10m u-wind、10 metre U wind component、10 米东西风。\n这是干扰变量，用于证明检索不是「任意查询都返回第一段」。",
+                  "score": 0.032258,
+                  "source": "corpus/era5_variable_aliases.md"
+                },
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p0-c0",
+                  "parent_text": "# ERA5 单层变量别名（静态摘录）\n\nsource_url: https:<redacted>\nretrieved: 2026-08-30\n\n本页是 ClimWorkflow G6 仓库 fixture，不是 CDS 门户实时抓取。检索命中不得当作下载许可，\n也不得替代磁盘 Context。",
+                  "score": 0.031498,
+                  "source": "corpus/era5_variable_aliases.md"
+                }
+              ],
+              "query": "2 米气温 官方短名 t2m 2m_temperature"
+            },
+            "sequence": 2,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 89,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_plan_steps",
+            "output_redacted": {
+              "status": "running"
+            },
+            "sequence": 3,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 44937,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_acquire_data",
+            "output_redacted": {
+              "artifact_id": "dataset-acquire-era5-t2m-beijing",
+              "effective_mode": "cds",
+              "media_type": "application/x-netcdf",
+              "path": ".climate/data/fe360438-eb90-45ae-9c84-60a5b3eb270c/cds-acquire-era5-t2m-beijing.nc",
+              "requested_mode": "cds"
+            },
+            "sequence": 4,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 244,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_inspect_dataset",
+            "output_redacted": {
+              "artifact_id": "profile-primary",
+              "format": "netcdf",
+              "path": ".climate/data/fe360438-eb90-45ae-9c84-60a5b3eb270c/cds-acquire-era5-t2m-beijing.nc",
+              "variables": [
+                "number",
+                "expver",
+                "t2m"
+              ]
+            },
+            "sequence": 5,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 1209,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_analyze_plot",
+            "output_redacted": {
+              "artifact_id": "plot-plot-t2m-histogram",
+              "fallback_reason": null,
+              "media_type": "image/png",
+              "path": ".climate/output/fe360438-eb90-45ae-9c84-60a5b3eb270c/plot-plot-t2m-histogram.png"
+            },
+            "sequence": 6,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 320,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_write_report",
+            "output_redacted": {
+              "artifact_id": "report-primary",
+              "has_absolute_workspace": false,
+              "has_relative_plot": true,
+              "media_type": "text/markdown",
+              "path": ".climate/output/fe360438-eb90-45ae-9c84-60a5b3eb270c/report.md"
+            },
+            "sequence": 7,
+            "session": 1
+          },
+          {
+            "context_version": 11,
+            "duration_ms": 90,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_read_context",
+            "output_redacted": {
+              "status": "completed",
+              "version": 11
+            },
+            "sequence": 8,
+            "session": 1
+          }
+        ],
+        "tools_executed": true
+      },
+      "workspace_isolated": true
+    },
+    {
+      "error_code": null,
+      "passed": true,
+      "run_index": 3,
+      "trace": {
+        "artifact_manifest": [
+          {
+            "kind": "dataset",
+            "matches_context": true,
+            "path": ".climate/data/7cf93ac6-937f-4ab3-b8d0-5c3891d7827c/cds-acquire-era5-t2m.nc"
+          },
+          {
+            "kind": "profile",
+            "matches_context": true,
+            "path": ".climate/output/7cf93ac6-937f-4ab3-b8d0-5c3891d7827c/profile.json"
+          },
+          {
+            "kind": "plot",
+            "matches_context": true,
+            "path": ".climate/output/7cf93ac6-937f-4ab3-b8d0-5c3891d7827c/plot-plot-era5-t2m-hist.png"
+          },
+          {
+            "kind": "report",
+            "matches_context": true,
+            "path": ".climate/output/7cf93ac6-937f-4ab3-b8d0-5c3891d7827c/report.md"
+          }
+        ],
+        "assertion_results": [
+          {
+            "id": "rag_used",
+            "message": "ok",
+            "passed": true,
+            "type": "tool_called"
+          },
+          {
+            "id": "alias_t2m",
+            "message": "ok",
+            "passed": true,
+            "type": "knowledge_hits_variable"
+          },
+          {
+            "id": "read_context",
+            "message": "ok",
+            "passed": true,
+            "type": "tool_called"
+          },
+          {
+            "id": "dag",
+            "message": "ok",
+            "passed": true,
+            "type": "climate_dag_order"
+          },
+          {
+            "id": "known_tools",
+            "message": "ok",
+            "passed": true,
+            "type": "unknown_tools_forbidden"
+          },
+          {
+            "id": "tools_ok",
+            "message": "ok",
+            "passed": true,
+            "type": "all_tool_results_ok"
+          },
+          {
+            "id": "status",
+            "message": "ok",
+            "passed": true,
+            "type": "final_run_status"
+          },
+          {
+            "id": "versions",
+            "message": "ok",
+            "passed": true,
+            "type": "context_version_monotonic"
+          },
+          {
+            "id": "artifacts",
+            "message": "ok",
+            "passed": true,
+            "type": "artifacts_match_manifest"
+          },
+          {
+            "id": "cds",
+            "message": "ok",
+            "passed": true,
+            "type": "cds_mode_no_fallback"
+          },
+          {
+            "id": "mode",
+            "message": "ok",
+            "passed": true,
+            "type": "trace_mode"
+          },
+          {
+            "id": "real_exec",
+            "message": "ok",
+            "passed": true,
+            "type": "model_and_tools_real"
+          },
+          {
+            "id": "timeout",
+            "message": "ok",
+            "passed": true,
+            "type": "duration_within_timeout"
+          }
+        ],
+        "context_versions": [
+          11
+        ],
+        "counts_toward_real_pass_rate": true,
+        "duration_ms": 81514,
+        "final_context_version": 11,
+        "final_run_status": "completed",
+        "finished_at": "2026-09-08T10:06:12Z",
+        "hook_events": [],
+        "mode": "real_agent",
+        "model_invoked": true,
+        "network_isolated": false,
+        "recovery": null,
+        "run_id": "7cf93ac6-937f-4ab3-b8d0-5c3891d7827c",
+        "scenario_id": "cds_knowledge_smoke",
+        "started_at": "2026-09-08T10:04:50Z",
+        "suite_version": "g4-real-agent",
+        "synthetic": false,
+        "tool_calls": [
+          {
+            "context_version": null,
+            "duration_ms": 69117,
+            "error_code": null,
+            "input_redacted": {
+              "query": "2 米气温 官方短名 变量名 单位 ERA5"
+            },
+            "is_error": false,
+            "name": "climate_query_knowledge",
+            "output_redacted": {
+              "hit_count": 3,
+              "hits": [
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p1-c0",
+                  "parent_text": "## 2 metre temperature\n\n官方短名 **t2m**。文档与口语别名包括：2m temperature、2 metre temperature、2 米气温。\n单位为开尔文（K）。该变量描述距地约 2 米的气温，常用于地面温度分析。\n数字与统计仍以 inspect profile 为准；本文只解释含义、单位与局限。",
+                  "score": 0.032787,
+                  "source": "corpus/era5_variable_aliases.md"
+                },
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p2-c0",
+                  "parent_text": "## 10 metre U wind component\n\n官方短名 **u10**。别名：10m u-wind、10 metre U wind component、10 米东西风。\n这是干扰变量，用于证明检索不是「任意查询都返回第一段」。",
+                  "score": 0.032258,
+                  "source": "corpus/era5_variable_aliases.md"
+                },
+                {
+                  "chunk_id": "corpus-era5-variable-aliases-md-p0-c0",
+                  "parent_text": "# ERA5 单层变量别名（静态摘录）\n\nsource_url: https:<redacted>\nretrieved: 2026-08-30\n\n本页是 ClimWorkflow G6 仓库 fixture，不是 CDS 门户实时抓取。检索命中不得当作下载许可，\n也不得替代磁盘 Context。",
+                  "score": 0.031498,
+                  "source": "corpus/era5_variable_aliases.md"
+                }
+              ],
+              "query": "2 米气温 官方短名 变量名 单位 ERA5"
+            },
+            "sequence": 1,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 228,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_init_workflow",
+            "output_redacted": {
+              "status": "initialized"
+            },
+            "sequence": 2,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 156,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_plan_steps",
+            "output_redacted": {
+              "status": "running"
+            },
+            "sequence": 3,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 31830,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_acquire_data",
+            "output_redacted": {
+              "artifact_id": "dataset-acquire-era5-t2m",
+              "effective_mode": "cds",
+              "media_type": "application/x-netcdf",
+              "path": ".climate/data/7cf93ac6-937f-4ab3-b8d0-5c3891d7827c/cds-acquire-era5-t2m.nc",
+              "requested_mode": "cds"
+            },
+            "sequence": 4,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 216,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_inspect_dataset",
+            "output_redacted": {
+              "artifact_id": "profile-primary",
+              "format": "netcdf",
+              "path": ".climate/data/7cf93ac6-937f-4ab3-b8d0-5c3891d7827c/cds-acquire-era5-t2m.nc",
+              "variables": [
+                "number",
+                "expver",
+                "t2m"
+              ]
+            },
+            "sequence": 5,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 100,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_analyze_plot",
+            "output_redacted": {
+              "artifact_id": "plot-plot-era5-t2m-hist",
+              "fallback_reason": null,
+              "media_type": "image/png",
+              "path": ".climate/output/7cf93ac6-937f-4ab3-b8d0-5c3891d7827c/plot-plot-era5-t2m-hist.png"
+            },
+            "sequence": 6,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 62,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_write_report",
+            "output_redacted": {
+              "artifact_id": "report-primary",
+              "has_absolute_workspace": false,
+              "has_relative_plot": true,
+              "media_type": "text/markdown",
+              "path": ".climate/output/7cf93ac6-937f-4ab3-b8d0-5c3891d7827c/report.md"
+            },
+            "sequence": 7,
+            "session": 1
+          },
+          {
+            "context_version": 11,
+            "duration_ms": 14,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_read_context",
+            "output_redacted": {
+              "status": "completed",
+              "version": 11
+            },
+            "sequence": 8,
+            "session": 1
+          }
+        ],
+        "tools_executed": true
+      },
+      "workspace_isolated": true
+    }
+  ],
+  "runs": 3,
+  "schema_version": "g4-climate-real-v1",
+  "suite": "climate",
+  "suite_version": "g4-real-agent",
+  "synthetic": false,
+  "tools_executed": true
+}

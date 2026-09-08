@@ -39,6 +39,8 @@ SKILL_CONTRACT_PHRASES: tuple[str, ...] = (
     "科学严谨",
     "完整性",
     "可视化质量",
+    "climate_query_knowledge",
+    "不得用检索替代 climate_read_context",
 )
 
 TOOL_DESCRIPTIONS: dict[str, str] = {
@@ -76,6 +78,11 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Coding-Agent（可视化）只读验收：校验 dataset/profile/plot/report 规则完整性。"
         "不是第五类 plan action；建议在 write_report 成功后调用。"
     ),
+    "climate_query_knowledge": (
+        "只读文档检索：用仓库知识库解释变量别名、单位与局限。"
+        "不是第五类 plan action；默认未注册。"
+        "命中不得当作 CDS 下载许可，也不得替代 climate_read_context。"
+    ),
 }
 
 FIELD_DESCRIPTIONS: dict[str, str] = {
@@ -109,6 +116,7 @@ ACQUIRE_PROMPT = """\
 - local：只读 workspace 内已有 CSV。
 - cds：真实 ERA5。请求必须通过静态 CDS 元数据目录；非法变量/越界区域会失败。
 系统可对合法参数最多展开 3 个候选并顺序尝试，首次成功即停。
+口语别名可先查知识库，但 acquire 前仍须目录校验；检索命中 ≠ 允许下载。
 禁止 allow_sample_fallback 静默把 sample 当成真实 CDS。
 禁止 Selenium / 浏览器抓取门户。禁止 Bash 或 Python 下载。
 """
@@ -135,6 +143,7 @@ RECOVERY_PROMPT = """\
 Context 是智能体之间的合同（对应论文 Contextual Coordination）。
 权威进度只在磁盘 `.climate/runs/<run_id>/context.json`。
 会话压缩、重启或工具报错后，必须先 climate_read_context。
+不得用检索替代 climate_read_context，不得用旧文档猜测当前步骤已成功。
 工具失败会返回稳定错误码，下一轮改参数再试；不要改写已成功步骤的输入。
 同参数重放会返回旧结果；已成功步骤换参数会冲突。
 """
@@ -142,6 +151,7 @@ Context 是智能体之间的合同（对应论文 Contextual Coordination）。
 SAFETY_PROMPT = """\
 禁止：任意 Python/Shell/exec/eval、生成代码沙箱、Selenium、ECMWF S2S 专用 Agent、
 把 SPI/IVT/TC 等论文子步骤登记为新 action、凭证与 `.cdsapirc` 写入工具输入或 Context。
+禁止把检索命中当作 CDS 下载许可。climate_query_knowledge 不是 plan action。
 数据写入 `.climate/data/<run_id>/`；图与报告写入 `.climate/output/<run_id>/`。
 """
 
@@ -157,14 +167,32 @@ COMPACT_SYSTEM_PROMPT = "\n".join(
 )
 
 
-def build_eval_system_prompt(skill_text: str, *, permission_mode: str) -> str:
+def build_eval_system_prompt(
+    skill_text: str,
+    *,
+    permission_mode: str,
+    include_knowledge: bool = False,
+) -> str:
     """组装 real_agent 系统提示：Skill 正文 + 论文对齐合同 + 权限说明。"""
     skill = skill_text.strip()
+    tools_line = (
+        "你只能使用 Climate 工具（核心七工具；write_report 成功后可选用只读 "
+        "climate_validate_artifacts）。"
+    )
+    if include_knowledge:
+        tools_line += (
+            "本场景已注册只读 climate_query_knowledge；acquire 前须用口语别名查询。"
+            "检索不得替代目录校验或 climate_read_context。"
+        )
+    else:
+        tools_line += (
+            "climate_query_knowledge 默认未注册；即使可用也不得替代"
+            "目录校验或 climate_read_context。"
+        )
     parts = [
         COMPACT_SYSTEM_PROMPT,
         skill,
-        "你只能使用 Climate 工具（核心七工具；write_report 成功后可选用只读 "
-        "climate_validate_artifacts）。禁止 Bash/Python 执行与凭证输出。",
+        tools_line + "禁止 Bash/Python 执行与凭证输出。",
         f"permission_mode={permission_mode}。",
     ]
     return "\n\n".join(part.strip() for part in parts if part.strip())

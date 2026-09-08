@@ -8,6 +8,7 @@ from openharness.climate.tools import (
     ClimateInitWorkflowTool,
     ClimateInspectDatasetTool,
     ClimatePlanStepsTool,
+    ClimateQueryKnowledgeTool,
     ClimateReadContextTool,
     ClimateValidateArtifactsTool,
     ClimateWriteReportTool,
@@ -24,8 +25,12 @@ class ClimateToolRegistry(ToolRegistry):
         super().register(tool)
 
 
-def create_climate_tool_registry(*, include_validate: bool = True) -> ClimateToolRegistry:
-    """默认返回 8 个 Climate 工具；include_validate=False 仅用于证明核心七工具仍可独立组装。"""
+def create_climate_tool_registry(
+    *,
+    include_validate: bool = True,
+    include_knowledge: bool = False,
+) -> ClimateToolRegistry:
+    """默认返回 8 个 Climate 工具；知识工具仅 include_knowledge=True 时注册。"""
     registry = ClimateToolRegistry()
     for tool in (
         ClimateInitWorkflowTool(),
@@ -39,4 +44,6 @@ def create_climate_tool_registry(*, include_validate: bool = True) -> ClimateToo
         registry.register(tool)
     if include_validate:
         registry.register(ClimateValidateArtifactsTool())
+    if include_knowledge:
+        registry.register(ClimateQueryKnowledgeTool())
     return registry

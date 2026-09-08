@@ -1,0 +1,22 @@
+{
+  "schema_version": "g4-climate-real-v1",
+  "profile": "openai-compatible",
+  "provider": "openai",
+  "model": "deepseek-v4-pro",
+  "effort": "medium",
+  "max_turns": 200,
+  "permission_mode": "full_auto",
+  "timeout_seconds": 600,
+  "scenario_id": "cds_knowledge_smoke",
+  "skill": "climate-ds",
+  "allow_sample_fallback": false,
+  "cds_request": {
+    "dataset": "reanalysis-era5-single-levels",
+    "variables": ["2m_temperature"],
+    "area": [40.5, 116.0, 39.5, 117.0],
+    "date_start": "2025-01-01",
+    "date_end": "2025-01-01",
+    "format": "netcdf",
+    "allow_sample_fallback": false
+  }
+}

@@ -1,0 +1,773 @@
+{
+  "baseline_published": true,
+  "config": {
+    "allow_sample_fallback": false,
+    "cds_request": {
+      "allow_sample_fallback": false,
+      "area": [
+        40.5,
+        116.0,
+        39.5,
+        117.0
+      ],
+      "dataset": "reanalysis-era5-single-levels",
+      "date_end": "2025-01-01",
+      "date_start": "2025-01-01",
+      "format": "netcdf",
+      "variables": [
+        "2m_temperature"
+      ]
+    },
+    "effort": "medium",
+    "max_turns": 200,
+    "model": "deepseek-v4-pro",
+    "permission_mode": "full_auto",
+    "profile": "openai-compatible",
+    "provider": "openai",
+    "scenario_id": "cds_minimal_smoke",
+    "schema_version": "g4-climate-real-v1",
+    "skill": "climate-ds",
+    "timeout_seconds": 600
+  },
+  "counts_toward_real_pass_rate": true,
+  "dirty": true,
+  "dirty_digest": "2cdaff334a1e2c7a54efa0d3b45a52ff9e97456f7a0b6e11d94efca271cc44b5",
+  "fingerprint": "5e149bf48fd0ace429e7cfdd144fac990cb4fe69727e7e8917b28c36e96791c3",
+  "git_commit": "8cb1ad6",
+  "min_passes": 2,
+  "mode": "real_agent",
+  "model_invoked": true,
+  "passes": 3,
+  "results": [
+    {
+      "error_code": null,
+      "passed": true,
+      "run_index": 1,
+      "trace": {
+        "artifact_manifest": [
+          {
+            "kind": "dataset",
+            "matches_context": true,
+            "path": ".climate/data/c45ca47a-7dde-464a-a2fe-70c87a759bc1/cds-acquire-era5-t2m.nc"
+          },
+          {
+            "kind": "profile",
+            "matches_context": true,
+            "path": ".climate/output/c45ca47a-7dde-464a-a2fe-70c87a759bc1/profile.json"
+          },
+          {
+            "kind": "plot",
+            "matches_context": true,
+            "path": ".climate/output/c45ca47a-7dde-464a-a2fe-70c87a759bc1/plot-plot-era5-t2m-histogram.png"
+          },
+          {
+            "kind": "report",
+            "matches_context": true,
+            "path": ".climate/output/c45ca47a-7dde-464a-a2fe-70c87a759bc1/report.md"
+          }
+        ],
+        "assertion_results": [
+          {
+            "id": "dag",
+            "message": "ok",
+            "passed": true,
+            "type": "climate_dag_order"
+          },
+          {
+            "id": "known_tools",
+            "message": "ok",
+            "passed": true,
+            "type": "unknown_tools_forbidden"
+          },
+          {
+            "id": "tools_ok",
+            "message": "ok",
+            "passed": true,
+            "type": "all_tool_results_ok"
+          },
+          {
+            "id": "status",
+            "message": "ok",
+            "passed": true,
+            "type": "final_run_status"
+          },
+          {
+            "id": "versions",
+            "message": "ok",
+            "passed": true,
+            "type": "context_version_monotonic"
+          },
+          {
+            "id": "artifacts",
+            "message": "ok",
+            "passed": true,
+            "type": "artifacts_match_manifest"
+          },
+          {
+            "id": "cds",
+            "message": "ok",
+            "passed": true,
+            "type": "cds_mode_no_fallback"
+          },
+          {
+            "id": "mode",
+            "message": "ok",
+            "passed": true,
+            "type": "trace_mode"
+          },
+          {
+            "id": "real_exec",
+            "message": "ok",
+            "passed": true,
+            "type": "model_and_tools_real"
+          },
+          {
+            "id": "timeout",
+            "message": "ok",
+            "passed": true,
+            "type": "duration_within_timeout"
+          }
+        ],
+        "context_versions": [
+          11
+        ],
+        "counts_toward_real_pass_rate": true,
+        "duration_ms": 111255,
+        "final_context_version": 11,
+        "final_run_status": "completed",
+        "finished_at": "2026-09-08T08:32:33Z",
+        "hook_events": [],
+        "mode": "real_agent",
+        "model_invoked": true,
+        "network_isolated": false,
+        "recovery": null,
+        "run_id": "c45ca47a-7dde-464a-a2fe-70c87a759bc1",
+        "scenario_id": "cds_minimal_smoke",
+        "started_at": "2026-09-08T08:30:42Z",
+        "suite_version": "g4-real-agent",
+        "synthetic": false,
+        "tool_calls": [
+          {
+            "context_version": null,
+            "duration_ms": 176,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_init_workflow",
+            "output_redacted": {
+              "status": "initialized"
+            },
+            "sequence": 1,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 88,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_plan_steps",
+            "output_redacted": {
+              "status": "running"
+            },
+            "sequence": 2,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 34138,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_acquire_data",
+            "output_redacted": {
+              "artifact_id": "dataset-acquire-era5-t2m",
+              "effective_mode": "cds",
+              "media_type": "application/x-netcdf",
+              "path": ".climate/data/c45ca47a-7dde-464a-a2fe-70c87a759bc1/cds-acquire-era5-t2m.nc",
+              "requested_mode": "cds"
+            },
+            "sequence": 3,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 380,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_inspect_dataset",
+            "output_redacted": {
+              "artifact_id": "profile-primary",
+              "format": "netcdf",
+              "path": ".climate/data/c45ca47a-7dde-464a-a2fe-70c87a759bc1/cds-acquire-era5-t2m.nc",
+              "variables": [
+                "number",
+                "expver",
+                "t2m"
+              ]
+            },
+            "sequence": 4,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 2926,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_analyze_plot",
+            "output_redacted": {
+              "artifact_id": "plot-plot-era5-t2m-histogram",
+              "fallback_reason": null,
+              "media_type": "image/png",
+              "path": ".climate/output/c45ca47a-7dde-464a-a2fe-70c87a759bc1/plot-plot-era5-t2m-histogram.png"
+            },
+            "sequence": 5,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 281,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_write_report",
+            "output_redacted": {
+              "artifact_id": "report-primary",
+              "has_absolute_workspace": false,
+              "has_relative_plot": true,
+              "media_type": "text/markdown",
+              "path": ".climate/output/c45ca47a-7dde-464a-a2fe-70c87a759bc1/report.md"
+            },
+            "sequence": 6,
+            "session": 1
+          },
+          {
+            "context_version": 11,
+            "duration_ms": 78,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_read_context",
+            "output_redacted": {
+              "status": "completed",
+              "version": 11
+            },
+            "sequence": 7,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 93,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_validate_artifacts",
+            "output_redacted": {},
+            "sequence": 8,
+            "session": 1
+          }
+        ],
+        "tools_executed": true
+      },
+      "workspace_isolated": true
+    },
+    {
+      "error_code": null,
+      "passed": true,
+      "run_index": 2,
+      "trace": {
+        "artifact_manifest": [
+          {
+            "kind": "dataset",
+            "matches_context": true,
+            "path": ".climate/data/73413475-9a72-4130-ab4d-56a153a7d19f/cds-acquire-era5-t2m.nc"
+          },
+          {
+            "kind": "profile",
+            "matches_context": true,
+            "path": ".climate/output/73413475-9a72-4130-ab4d-56a153a7d19f/profile.json"
+          },
+          {
+            "kind": "plot",
+            "matches_context": true,
+            "path": ".climate/output/73413475-9a72-4130-ab4d-56a153a7d19f/plot-plot-era5-t2m.png"
+          },
+          {
+            "kind": "report",
+            "matches_context": true,
+            "path": ".climate/output/73413475-9a72-4130-ab4d-56a153a7d19f/report.md"
+          }
+        ],
+        "assertion_results": [
+          {
+            "id": "dag",
+            "message": "ok",
+            "passed": true,
+            "type": "climate_dag_order"
+          },
+          {
+            "id": "known_tools",
+            "message": "ok",
+            "passed": true,
+            "type": "unknown_tools_forbidden"
+          },
+          {
+            "id": "tools_ok",
+            "message": "ok",
+            "passed": true,
+            "type": "all_tool_results_ok"
+          },
+          {
+            "id": "status",
+            "message": "ok",
+            "passed": true,
+            "type": "final_run_status"
+          },
+          {
+            "id": "versions",
+            "message": "ok",
+            "passed": true,
+            "type": "context_version_monotonic"
+          },
+          {
+            "id": "artifacts",
+            "message": "ok",
+            "passed": true,
+            "type": "artifacts_match_manifest"
+          },
+          {
+            "id": "cds",
+            "message": "ok",
+            "passed": true,
+            "type": "cds_mode_no_fallback"
+          },
+          {
+            "id": "mode",
+            "message": "ok",
+            "passed": true,
+            "type": "trace_mode"
+          },
+          {
+            "id": "real_exec",
+            "message": "ok",
+            "passed": true,
+            "type": "model_and_tools_real"
+          },
+          {
+            "id": "timeout",
+            "message": "ok",
+            "passed": true,
+            "type": "duration_within_timeout"
+          }
+        ],
+        "context_versions": [
+          11
+        ],
+        "counts_toward_real_pass_rate": true,
+        "duration_ms": 83953,
+        "final_context_version": 11,
+        "final_run_status": "completed",
+        "finished_at": "2026-09-08T08:33:57Z",
+        "hook_events": [],
+        "mode": "real_agent",
+        "model_invoked": true,
+        "network_isolated": false,
+        "recovery": null,
+        "run_id": "73413475-9a72-4130-ab4d-56a153a7d19f",
+        "scenario_id": "cds_minimal_smoke",
+        "started_at": "2026-09-08T08:32:33Z",
+        "suite_version": "g4-real-agent",
+        "synthetic": false,
+        "tool_calls": [
+          {
+            "context_version": null,
+            "duration_ms": 291,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_init_workflow",
+            "output_redacted": {
+              "status": "initialized"
+            },
+            "sequence": 1,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 106,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_plan_steps",
+            "output_redacted": {
+              "status": "running"
+            },
+            "sequence": 2,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 41446,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_acquire_data",
+            "output_redacted": {
+              "artifact_id": "dataset-acquire-era5-t2m",
+              "effective_mode": "cds",
+              "media_type": "application/x-netcdf",
+              "path": ".climate/data/73413475-9a72-4130-ab4d-56a153a7d19f/cds-acquire-era5-t2m.nc",
+              "requested_mode": "cds"
+            },
+            "sequence": 3,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 230,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_inspect_dataset",
+            "output_redacted": {
+              "artifact_id": "profile-primary",
+              "format": "netcdf",
+              "path": ".climate/data/73413475-9a72-4130-ab4d-56a153a7d19f/cds-acquire-era5-t2m.nc",
+              "variables": [
+                "number",
+                "expver",
+                "t2m"
+              ]
+            },
+            "sequence": 4,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 1030,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_analyze_plot",
+            "output_redacted": {
+              "artifact_id": "plot-plot-era5-t2m",
+              "fallback_reason": null,
+              "media_type": "image/png",
+              "path": ".climate/output/73413475-9a72-4130-ab4d-56a153a7d19f/plot-plot-era5-t2m.png"
+            },
+            "sequence": 5,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 256,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_write_report",
+            "output_redacted": {
+              "artifact_id": "report-primary",
+              "has_absolute_workspace": false,
+              "has_relative_plot": true,
+              "media_type": "text/markdown",
+              "path": ".climate/output/73413475-9a72-4130-ab4d-56a153a7d19f/report.md"
+            },
+            "sequence": 6,
+            "session": 1
+          },
+          {
+            "context_version": 11,
+            "duration_ms": 76,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_read_context",
+            "output_redacted": {
+              "status": "completed",
+              "version": 11
+            },
+            "sequence": 7,
+            "session": 1
+          }
+        ],
+        "tools_executed": true
+      },
+      "workspace_isolated": true
+    },
+    {
+      "error_code": null,
+      "passed": true,
+      "run_index": 3,
+      "trace": {
+        "artifact_manifest": [
+          {
+            "kind": "dataset",
+            "matches_context": true,
+            "path": ".climate/data/693645c5-710f-4796-b188-365321308b1f/cds-acquire-era5-t2m.nc"
+          },
+          {
+            "kind": "profile",
+            "matches_context": true,
+            "path": ".climate/output/693645c5-710f-4796-b188-365321308b1f/profile.json"
+          },
+          {
+            "kind": "plot",
+            "matches_context": true,
+            "path": ".climate/output/693645c5-710f-4796-b188-365321308b1f/plot-plot-era5-t2m-hist.png"
+          },
+          {
+            "kind": "report",
+            "matches_context": true,
+            "path": ".climate/output/693645c5-710f-4796-b188-365321308b1f/report.md"
+          }
+        ],
+        "assertion_results": [
+          {
+            "id": "dag",
+            "message": "ok",
+            "passed": true,
+            "type": "climate_dag_order"
+          },
+          {
+            "id": "known_tools",
+            "message": "ok",
+            "passed": true,
+            "type": "unknown_tools_forbidden"
+          },
+          {
+            "id": "tools_ok",
+            "message": "ok",
+            "passed": true,
+            "type": "all_tool_results_ok"
+          },
+          {
+            "id": "status",
+            "message": "ok",
+            "passed": true,
+            "type": "final_run_status"
+          },
+          {
+            "id": "versions",
+            "message": "ok",
+            "passed": true,
+            "type": "context_version_monotonic"
+          },
+          {
+            "id": "artifacts",
+            "message": "ok",
+            "passed": true,
+            "type": "artifacts_match_manifest"
+          },
+          {
+            "id": "cds",
+            "message": "ok",
+            "passed": true,
+            "type": "cds_mode_no_fallback"
+          },
+          {
+            "id": "mode",
+            "message": "ok",
+            "passed": true,
+            "type": "trace_mode"
+          },
+          {
+            "id": "real_exec",
+            "message": "ok",
+            "passed": true,
+            "type": "model_and_tools_real"
+          },
+          {
+            "id": "timeout",
+            "message": "ok",
+            "passed": true,
+            "type": "duration_within_timeout"
+          }
+        ],
+        "context_versions": [
+          11
+        ],
+        "counts_toward_real_pass_rate": true,
+        "duration_ms": 75083,
+        "final_context_version": 11,
+        "final_run_status": "completed",
+        "finished_at": "2026-09-08T08:35:12Z",
+        "hook_events": [],
+        "mode": "real_agent",
+        "model_invoked": true,
+        "network_isolated": false,
+        "recovery": null,
+        "run_id": "693645c5-710f-4796-b188-365321308b1f",
+        "scenario_id": "cds_minimal_smoke",
+        "started_at": "2026-09-08T08:33:57Z",
+        "suite_version": "g4-real-agent",
+        "synthetic": false,
+        "tool_calls": [
+          {
+            "context_version": null,
+            "duration_ms": 180,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_init_workflow",
+            "output_redacted": {
+              "status": "initialized"
+            },
+            "sequence": 1,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 118,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_plan_steps",
+            "output_redacted": {
+              "status": "running"
+            },
+            "sequence": 2,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 31730,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_acquire_data",
+            "output_redacted": {
+              "artifact_id": "dataset-acquire-era5-t2m",
+              "effective_mode": "cds",
+              "media_type": "application/x-netcdf",
+              "path": ".climate/data/693645c5-710f-4796-b188-365321308b1f/cds-acquire-era5-t2m.nc",
+              "requested_mode": "cds"
+            },
+            "sequence": 3,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 285,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_inspect_dataset",
+            "output_redacted": {
+              "artifact_id": "profile-primary",
+              "format": "netcdf",
+              "path": ".climate/data/693645c5-710f-4796-b188-365321308b1f/cds-acquire-era5-t2m.nc",
+              "variables": [
+                "number",
+                "expver",
+                "t2m"
+              ]
+            },
+            "sequence": 4,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 796,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_analyze_plot",
+            "output_redacted": {
+              "artifact_id": "plot-plot-era5-t2m-hist",
+              "fallback_reason": null,
+              "media_type": "image/png",
+              "path": ".climate/output/693645c5-710f-4796-b188-365321308b1f/plot-plot-era5-t2m-hist.png"
+            },
+            "sequence": 5,
+            "session": 1
+          },
+          {
+            "context_version": null,
+            "duration_ms": 301,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_write_report",
+            "output_redacted": {
+              "artifact_id": "report-primary",
+              "has_absolute_workspace": false,
+              "has_relative_plot": true,
+              "media_type": "text/markdown",
+              "path": ".climate/output/693645c5-710f-4796-b188-365321308b1f/report.md"
+            },
+            "sequence": 6,
+            "session": 1
+          },
+          {
+            "context_version": 11,
+            "duration_ms": 95,
+            "error_code": null,
+            "input_redacted": {
+              "note": "omitted"
+            },
+            "is_error": false,
+            "name": "climate_read_context",
+            "output_redacted": {
+              "status": "completed",
+              "version": 11
+            },
+            "sequence": 7,
+            "session": 1
+          }
+        ],
+        "tools_executed": true
+      },
+      "workspace_isolated": true
+    }
+  ],
+  "runs": 3,
+  "schema_version": "g4-climate-real-v1",
+  "suite": "climate",
+  "suite_version": "g4-real-agent",
+  "synthetic": false,
+  "tools_executed": true
+}

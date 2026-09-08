@@ -59,6 +59,12 @@ class WriteZone(str, Enum):
     DATA = "data"
     OUTPUT = "output"
     STATE = "state"
+    KNOWLEDGE = "knowledge"
+
+
+def knowledge_dir(workspace: Path) -> Path:
+    """知识索引根目录（workspace 相对 `.climate/knowledge`）。"""
+    return resolve_workspace_path(workspace, ".climate/knowledge")
 
 
 def resolve_workspace_path(workspace: Path, relative: str) -> Path:
@@ -208,6 +214,17 @@ def validate_write_zone(
             zone=zone.value,
             workspace=workspace,
         )
+
+    if zone is WriteZone.KNOWLEDGE:
+        prefix = ".climate/knowledge/"
+        if not relative.startswith(prefix) or relative == prefix:
+            raise _invalid_path(
+                "路径不在 knowledge 索引写入区",
+                path=relative,
+                zone=zone.value,
+                workspace=workspace,
+            )
+        return
 
     raise _invalid_path("未知写入区", path=relative, workspace=workspace)
 

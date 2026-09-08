@@ -18,6 +18,7 @@ from evals.climate.agent_config import config_fingerprint, load_agent_config
 from evals.climate.assertions import evaluate_hard_assertions
 from evals.climate.models import (
     EvalMode,
+    HardAssertionSpec,
     Scenario,
     TraceRecord,
     load_scenario,
@@ -1260,3 +1261,285 @@ def test_report_quality_smoke_real_offline(tmp_path: Path) -> None:
     original = baseline.read_bytes()
     assert original  # 历史 G4 证据不得被本测试改写
     assert baseline.read_bytes() == original
+
+
+def test_knowledge_alias_smoke_yaml_disclaims_bench85_and_enterprise_kb() -> None:
+    """EVAL-005：场景必须声明不是 Bench-85 / 不是企业知识库准确率。"""
+    path = ROOT / "evals" / "climate" / "scenarios" / "knowledge_alias_smoke.yaml"
+    text = path.read_text(encoding="utf-8")
+    scenario = load_scenario(path)
+    assert scenario.id == "knowledge_alias_smoke"
+    assert scenario.mode is EvalMode.real_offline
+    lowered = text.lower()
+    assert "bench-85" in lowered
+    assert "不是" in text
+    assert "企业知识库" in text or "hit rate" in lowered
+    assert any(item.type == "knowledge_hits_variable" for item in scenario.hard_assertions)
+    from evals.climate.runner import _REAL_OFFLINE_ORDER
+
+    assert "knowledge_alias_smoke" not in _REAL_OFFLINE_ORDER
+    assert len(_REAL_OFFLINE_ORDER) == 4
+
+
+def test_knowledge_hits_variable_assertion_on_fixture_trace() -> None:
+    """EVAL-005：别名命中官方变量名；source 为相对路径。"""
+    spec = HardAssertionSpec(
+        id="alias_2m",
+        type="knowledge_hits_variable",
+        expected={"query": "2m temperature", "variable": "t2m", "max_rank": 5},
+    )
+    trace = TraceRecord.model_validate(
+        _minimal_trace(
+            mode="real_offline",
+            synthetic=False,
+            tools_executed=True,
+            counts_toward_real_pass_rate=True,
+            tool_calls=[
+                {
+                    "sequence": 1,
+                    "name": "climate_query_knowledge",
+                    "input_redacted": {"query": "2m temperature", "top_k": 5},
+                    "is_error": False,
+                    "error_code": None,
+                    "duration_ms": 1,
+                    "output_redacted": {
+                        "ok": True,
+                        "hit_count": 1,
+                        "hits": [
+                            {
+                                "chunk_id": "p0-c0",
+                                "parent_text": "官方短名 t2m。别名 2m temperature。",
+                                "source": "corpus/era5_variable_aliases.md",
+                                "score": 0.03,
+                            }
+                        ],
+                    },
+                }
+            ],
+        )
+    )
+    results = evaluate_hard_assertions(trace, [spec])
+    assert results[0].passed is True
+
+
+def test_knowledge_alias_smoke_real_offline(tmp_path: Path) -> None:
+    """EVAL-005：离线跑 knowledge_alias_smoke；默认禁网；不并入四场景。"""
+    scenario = load_scenario(
+        ROOT / "evals" / "climate" / "scenarios" / "knowledge_alias_smoke.yaml"
+    )
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    trace = run_real_offline(scenario, workspace=workspace)
+    results = evaluate_hard_assertions(trace, list(scenario.hard_assertions))
+    failed = [item for item in results if not item.passed]
+    assert failed == [], [item.message for item in failed]
+    assert trace.network_isolated is True
+    assert trace.synthetic is False
+    names = [item.name for item in trace.tool_calls]
+    assert names == ["climate_query_knowledge"] * 3
+    baseline = ROOT / "evals" / "baselines" / "climate-real-9b592ba.json"
+    original = baseline.read_bytes()
+    assert baseline.read_bytes() == original
+    from evals.climate.runner import _REAL_OFFLINE_ORDER
+
+    assert scenario.id not in _REAL_OFFLINE_ORDER
+
+
+def test_cds_knowledge_smoke_yaml_is_real_agent_not_offline_order() -> None:
+    """知识工具 real_agent 场景不得并入四场景，也不得覆盖 MODEL-001 YAML。"""
+    path = ROOT / "evals" / "climate" / "scenarios" / "cds_knowledge_smoke.yaml"
+    text = path.read_text(encoding="utf-8")
+    scenario = load_scenario(path)
+    assert scenario.id == "cds_knowledge_smoke"
+    assert scenario.mode is EvalMode.real_agent
+    lowered = text.lower()
+    assert "bench-85" in lowered
+    assert "不是" in text
+    assert "cds_minimal_smoke" in text or "MODEL-001" in text
+    types = {item.id: item.type for item in scenario.hard_assertions}
+    assert types["rag_used"] == "tool_called"
+    assert types["alias_t2m"] == "knowledge_hits_variable"
+    known = next(item for item in scenario.hard_assertions if item.id == "known_tools")
+    assert "climate_query_knowledge" in known.expected
+    from evals.climate.runner import _REAL_OFFLINE_ORDER
+
+    assert scenario.id not in _REAL_OFFLINE_ORDER
+    assert len(_REAL_OFFLINE_ORDER) == 4
+    config = load_agent_config(ROOT / "evals" / "configs" / "climate-real-g6-knowledge.json")
+    assert config.scenario_id == "cds_knowledge_smoke"
+    assert config.allow_sample_fallback is False
+
+
+def test_real_agent_knowledge_scenario_registers_ninth_tool_and_indexes(tmp_path: Path) -> None:
+    """仅 cds_knowledge_smoke 预建索引并注册第九工具；cds_minimal_smoke 仍八工具。"""
+    from evals.climate.real_agent import registry_for_scenario
+    from evals.climate.real_offline import _prepare_knowledge_index
+
+    knowledge = load_scenario(
+        ROOT / "evals" / "climate" / "scenarios" / "cds_knowledge_smoke.yaml"
+    )
+    minimal = load_scenario(
+        ROOT / "evals" / "climate" / "scenarios" / "cds_minimal_smoke.yaml"
+    )
+    enabled = registry_for_scenario(knowledge)
+    names = [tool.name for tool in enabled.list_tools()]
+    assert names[-1] == "climate_query_knowledge"
+    assert len(names) == 9
+    default = registry_for_scenario(minimal)
+    default_names = [tool.name for tool in default.list_tools()]
+    assert "climate_query_knowledge" not in default_names
+    assert len(default_names) == 8
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    _prepare_knowledge_index(workspace)
+    assert (workspace / ".climate" / "knowledge" / "manifest.json").is_file()
+
+
+def test_tool_called_and_knowledge_hits_without_exact_query() -> None:
+    """real_agent 不要求模型查询词与离线 YAML 完全一致，只要命中 t2m。"""
+    called = HardAssertionSpec(id="rag_used", type="tool_called", expected="climate_query_knowledge")
+    hits = HardAssertionSpec(
+        id="alias_t2m",
+        type="knowledge_hits_variable",
+        expected={"variable": "t2m", "max_rank": 5},
+    )
+    missing = HardAssertionSpec(id="rag_used", type="tool_called", expected="climate_query_knowledge")
+    base = _minimal_trace(
+        mode="real_agent",
+        synthetic=False,
+        tools_executed=True,
+        model_invoked=True,
+        counts_toward_real_pass_rate=True,
+        tool_calls=[
+            {
+                "sequence": 1,
+                "name": "climate_query_knowledge",
+                "input_redacted": {"query": "2 米气温"},
+                "is_error": False,
+                "error_code": None,
+                "duration_ms": 1,
+                "output_redacted": {
+                    "query": "2 米气温",
+                    "hit_count": 1,
+                    "hits": [
+                        {
+                            "chunk_id": "p0-c0",
+                            "parent_text": "官方短名 t2m。别名 2 米气温。",
+                            "source": "corpus/era5_variable_aliases.md",
+                            "score": 0.04,
+                        }
+                    ],
+                },
+            }
+        ],
+    )
+    trace = TraceRecord.model_validate(base)
+    results = evaluate_hard_assertions(trace, [called, hits])
+    assert all(item.passed for item in results), [item.message for item in results]
+    empty = TraceRecord.model_validate(
+        _minimal_trace(
+            mode="real_agent",
+            synthetic=False,
+            tools_executed=True,
+            model_invoked=True,
+            counts_toward_real_pass_rate=True,
+            tool_calls=[
+                {
+                    "sequence": 1,
+                    "name": "climate_init_workflow",
+                    "input_redacted": {"note": "omitted"},
+                    "is_error": False,
+                    "error_code": None,
+                    "duration_ms": 1,
+                    "output_redacted": {"version": 1},
+                }
+            ],
+        )
+    )
+    missed = evaluate_hard_assertions(empty, [missing, hits])
+    assert missed[0].passed is False
+    assert missed[1].passed is False
+
+
+def test_real_agent_replays_knowledge_hits_when_event_output_empty(tmp_path: Path) -> None:
+    """知识工具不写 Context；事件输出为空时必须能从索引重放 hits。"""
+    from evals.climate.real_agent import _replay_knowledge_hits_if_needed
+    from evals.climate.real_offline import _prepare_knowledge_index
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    _prepare_knowledge_index(workspace)
+    call = {
+        "name": "climate_query_knowledge",
+        "is_error": False,
+        "input_redacted": {"query": "2 米气温"},
+        "output_redacted": {},
+    }
+    _replay_knowledge_hits_if_needed(call, workspace)
+    output = call["output_redacted"]
+    assert output.get("query") == "2 米气温"
+    assert output.get("hit_count", 0) >= 1
+    blob = "\n".join(str(hit.get("parent_text") or "") for hit in output.get("hits") or [])
+    assert "t2m" in blob
+    spec = HardAssertionSpec(
+        id="alias_t2m",
+        type="knowledge_hits_variable",
+        expected={"variable": "t2m", "max_rank": 5},
+    )
+    trace = TraceRecord.model_validate(
+        _minimal_trace(
+            mode="real_agent",
+            synthetic=False,
+            tools_executed=True,
+            model_invoked=True,
+            counts_toward_real_pass_rate=True,
+            tool_calls=[
+                {
+                    "sequence": 1,
+                    "name": "climate_query_knowledge",
+                    "input_redacted": call["input_redacted"],
+                    "is_error": False,
+                    "error_code": None,
+                    "duration_ms": 1,
+                    "output_redacted": output,
+                }
+            ],
+        )
+    )
+    results = evaluate_hard_assertions(trace, [spec])
+    assert results[0].passed is True
+
+
+def test_real_agent_knowledge_suite_does_not_publish_without_rag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """知识场景若三次都没有 climate_query_knowledge，不得发布成功 baseline。"""
+    from evals.climate import runner as runner_mod
+
+    reports = tmp_path / "reports"
+    monkeypatch.setattr(runner_mod, "REPORT_DIR", reports)
+    seen: list[str] = []
+
+    def _fake(scenario: Any, config: Any, *, workspace: Path, run_index: int) -> TraceRecord:
+        del config, workspace, run_index
+        seen.append(scenario.id)
+        return _passing_real_agent_trace()
+
+    out = tmp_path / "baseline.json"
+    code = runner_mod.run_suite(
+        "climate",
+        "real_agent",
+        agent_config=str(ROOT / "evals" / "configs" / "climate-real-g6-knowledge.json"),
+        runs=3,
+        baseline_out=str(out),
+        run_once=_fake,
+    )
+    assert seen == ["cds_knowledge_smoke"] * 3
+    assert code != 0
+    assert not out.exists()
+    unpublished = reports / "climate-real_agent-unpublished.json"
+    assert unpublished.is_file()
+    payload = json.loads(unpublished.read_text(encoding="utf-8"))
+    assert payload["passes"] == 0
+    assert payload["baseline_published"] is False
+    assert payload["config"]["scenario_id"] == "cds_knowledge_smoke"
