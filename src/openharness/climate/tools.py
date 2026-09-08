@@ -25,6 +25,7 @@ from openharness.climate.pipeline import (
     validate_artifacts,
     write_report,
 )
+from openharness.climate.prompts import FIELD_DESCRIPTIONS, TOOL_DESCRIPTIONS
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
 
 _UUID_V4 = re.compile(
@@ -44,7 +45,12 @@ def _optional_uuid_v4(value: str | None) -> str | None:
 class ClimateInitWorkflowInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    objective: str | None = Field(default=None, min_length=1, max_length=4000)
+    objective: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=4000,
+        description=FIELD_DESCRIPTIONS["objective"],
+    )
     run_id: str | None = None
     resume_run_id: str | None = None
 
@@ -70,7 +76,11 @@ class ClimatePlanStepInput(BaseModel):
 
     step_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9-]+$")
     action: Literal["acquire_data", "inspect_dataset", "analyze_plot", "write_report"]
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(
+        min_length=1,
+        max_length=200,
+        description=FIELD_DESCRIPTIONS["plan_title"],
+    )
     depends_on: list[str] = Field(default_factory=list)
 
     @field_validator("depends_on")
@@ -101,7 +111,10 @@ class ClimateAcquireDataInput(BaseModel):
     step_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9-]+$")
     mode: Literal["sample", "local", "cds"]
     path: str | None = None
-    cds_request: dict[str, Any] | None = None
+    cds_request: dict[str, Any] | None = Field(
+        default=None,
+        description=FIELD_DESCRIPTIONS["cds_request"],
+    )
 
     @field_validator("run_id")
     @classmethod
@@ -169,7 +182,11 @@ class ClimateWriteReportInput(BaseModel):
     run_id: str | None = None
     step_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9-]+$")
     title: str = Field(min_length=1, max_length=200)
-    summary: str = Field(min_length=1, max_length=12000)
+    summary: str = Field(
+        min_length=1,
+        max_length=12000,
+        description=FIELD_DESCRIPTIONS["report_summary"],
+    )
 
     @field_validator("run_id")
     @classmethod
@@ -228,7 +245,7 @@ class ClimateTool(BaseTool, ABC):
 
 class ClimateInitWorkflowTool(ClimateTool):
     name = "climate_init_workflow"
-    description = "创建或显式 resume 一个 Climate run，并切换 active run。"
+    description = TOOL_DESCRIPTIONS["climate_init_workflow"]
     input_model = ClimateInitWorkflowInput
 
     async def execute(
@@ -247,7 +264,7 @@ class ClimateInitWorkflowTool(ClimateTool):
 
 class ClimatePlanStepsTool(ClimateTool):
     name = "climate_plan_steps"
-    description = "校验并持久化 Climate 工作流 DAG，使 run 进入 running。"
+    description = TOOL_DESCRIPTIONS["climate_plan_steps"]
     input_model = ClimatePlanStepsInput
 
     async def execute(
@@ -265,7 +282,7 @@ class ClimatePlanStepsTool(ClimateTool):
 
 class ClimateAcquireDataTool(ClimateTool):
     name = "climate_acquire_data"
-    description = "按 plan 获取数据集。支持离线 sample/local CSV 与 G4 CDS（默认不 fallback）。"
+    description = TOOL_DESCRIPTIONS["climate_acquire_data"]
     input_model = ClimateAcquireDataInput
 
     async def execute(
@@ -286,7 +303,7 @@ class ClimateAcquireDataTool(ClimateTool):
 
 class ClimateInspectDatasetTool(ClimateTool):
     name = "climate_inspect_dataset"
-    description = "检查 dataset 并写入有界 profile（CSV 或冻结的 NetCDF/GRIB）；会更新 Context。"
+    description = TOOL_DESCRIPTIONS["climate_inspect_dataset"]
     input_model = ClimateInspectDatasetInput
 
     async def execute(
@@ -305,7 +322,7 @@ class ClimateInspectDatasetTool(ClimateTool):
 
 class ClimateAnalyzePlotTool(ClimateTool):
     name = "climate_analyze_plot"
-    description = "从已检查 dataset 绘制图表；优先 PNG，matplotlib 缺失时输出真实 SVG。"
+    description = TOOL_DESCRIPTIONS["climate_analyze_plot"]
     input_model = ClimateAnalyzePlotInput
 
     async def execute(
@@ -328,7 +345,7 @@ class ClimateAnalyzePlotTool(ClimateTool):
 
 class ClimateWriteReportTool(ClimateTool):
     name = "climate_write_report"
-    description = "在 inspect 与 plot 成功后写入 Markdown 报告，并在全部 step 完成后标记 completed。"
+    description = TOOL_DESCRIPTIONS["climate_write_report"]
     input_model = ClimateWriteReportInput
 
     async def execute(
@@ -350,7 +367,7 @@ class ClimateReadContextTool(ClimateTool):
 
 
     name = "climate_read_context"
-    description = "只读返回脱敏、有界的 Climate Context 视图。"
+    description = TOOL_DESCRIPTIONS["climate_read_context"]
     input_model = ClimateReadContextInput
 
     def is_read_only(self, arguments: BaseModel) -> bool:
@@ -373,7 +390,7 @@ class ClimateReadContextTool(ClimateTool):
 
 class ClimateValidateArtifactsTool(ClimateTool):
     name = "climate_validate_artifacts"
-    description = "只读校验当前 run 的 dataset/profile/plot/report 规则完整性；不修改源数据。"
+    description = TOOL_DESCRIPTIONS["climate_validate_artifacts"]
     input_model = ClimateValidateArtifactsInput
 
     def is_read_only(self, arguments: BaseModel) -> bool:

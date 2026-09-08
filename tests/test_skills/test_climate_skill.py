@@ -94,3 +94,8 @@ def test_climate_skill_natural_language_to_four_actions_and_forbids_free_plan() 
     assert "第五类" in content or "新 action" in lowered or "自由" in content
     assert "exec(" not in lowered
     assert "subprocess" not in lowered
+    assert "Plan-Agent" in content
+    assert "Data-Agent" in content
+    assert "Coding-Agent" in content
+    assert "静态 CDS 元数据目录" in content
+    assert "最多 3 个候选" in content

@@ -13,6 +13,7 @@ from typing import Any
 from openharness.climate.errors import redact_secrets
 from openharness.climate.models import loads_run_context, loads_workspace_index
 from openharness.climate.pipeline import utc_now
+from openharness.climate.prompts import build_eval_system_prompt
 from openharness.climate.registry import create_climate_tool_registry
 from openharness.config.settings import PermissionSettings, load_settings
 from openharness.engine.query_engine import QueryEngine
@@ -182,12 +183,7 @@ async def _auto_allow(_tool: str, _input: str) -> bool:
 
 def _system_prompt(config: ClimateRealConfig) -> str:
     skill = SKILL_PATH.read_text(encoding="utf-8") if SKILL_PATH.is_file() else ""
-    return (
-        skill
-        + "\n\n你只能使用 Climate 七个工具。"
-        + f" permission_mode={config.permission_mode}。"
-        + " 禁止读取或输出凭证。"
-    )
+    return build_eval_system_prompt(skill, permission_mode=config.permission_mode)
 
 
 def _user_prompt(scenario: Scenario, config: ClimateRealConfig, run_index: int) -> str:
