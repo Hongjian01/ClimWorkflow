@@ -250,9 +250,11 @@ POSIX 形式；输出不得暴露本机绝对路径。
 - `Step.action`：`acquire_data | inspect_dataset | analyze_plot | write_report`。
 - `Step.status`：`pending | running | succeeded | failed | skipped`。
 - `Artifact.kind`：`dataset | profile | plot | report`。
-- `Event.type`：`run_created | active_run_changed | plan_created | step_started |
+- `Event.type`：`run_created | active_run_changed | plan_created | plan_confirmed | step_started |
   step_succeeded | step_failed | step_skipped | run_completed | run_failed | run_resumed |
   migration_completed | interrupted_recovered`。
+  `plan_confirmed` 是 G2 跟随（第 14E 节）新增的可选事件字面量，**不** bump `schema_version`，
+  也不是必填字段；旧 Context 无该事件仍可加载。
 
 `Step.error` 和 `last_error` 为 `null` 或第 9 节 error 对象
 `{code, message, retryable, details}`，并遵循同一脱敏规则。`result` 和 event `data` 只允许
@@ -494,6 +496,7 @@ mutation。
 ```json
 {
   "run_id": "可选 UUID v4",
+  "confirmed": "可选布尔，默认 false",
   "steps": [
     {
       "step_id": "1～64 字符，小写字母/数字/连字符",
@@ -506,7 +509,9 @@ mutation。
 ```
 
 steps 为 4～32 项；四类 action 各至少出现一次，允许同一 action 多 step；ID 唯一、依赖存在、
-图无环，每个 report 依赖可达 inspect 与 plot。标准演示使用恰好四个 step。输出为规范拓扑顺序。
+图无环，每个 report 依赖可达 inspect 与 plot。标准演示使用恰好四个 step。输出为规范拓扑顺序，
+以及各步 `title`/`action`。`confirmed` 见第 14E 节：缺省或 false 只写 `plan_created`；true 才追加
+`plan_confirmed`。不新增第五类 action，不新增第九工具。
 
 - **TOOL-PLAN-001（MUST，G2，PASS）**：plan 必须验证完整性和 DAG，在一次 Context mutation 中
   持久化；已开始业务 step 后不得替换 plan。
@@ -1177,6 +1182,53 @@ Day 21 已关闭 retrieve 超时与稳定 `.part` 发布。本日 **不是** Pha
 
 错误码不新增。非法 schema 继续 `CLIMATE_INVALID_INPUT`；目录拒绝继续可走 `CLIMATE_METADATA_REJECTED`（若载荷已通过七键形状）。
 
+## 14E. G2 跟随：plan 确认后再 acquire
+
+Day 21～22 已关闭 retrieve 挂起与 CDS 工具 schema。主路径 `init → plan → acquire → inspect → plot → report` 可跑通，但 **人机改口没有入口**：`full_auto` / 默认 ReAct 下模型 plan 完立刻 `climate_acquire_data`。本日 **不是** Phase G7，**不是** 工单/审批产品，**不是** 第九工具，**不是** 第五类 `action`，**不是** 改 QueryEngine。目标是 G2 跟随最小停顿：未确认前 acquire 硬拒绝；改口走整表新 plan，不 insert 单个 step。日计划见
+[DAY_23_G2_PLAN_CONFIRM_BEFORE_ACQUIRE.md](daily/DAY_23_G2_PLAN_CONFIRM_BEFORE_ACQUIRE.md)。
+
+### 与已交付能力的对照（信息性，约束实现）
+
+| 能力 | Day 05～22 | Day 23 是否做 | 说明 |
+|---|---|---|---|
+| 四类 action + 8 默认工具 | 已有 | **保持** | 确认是 `climate_plan_steps` 字段，不是新工具 |
+| `accept_plan`：initialized→running | 已有 | **保持** | 不把 run 卡在 `initialized` 等人 |
+| 全 pending 可整表换 plan | 状态机窗口已有检查；running 后首次 plan 曾因 run 转换表关掉 | **用起来** | running + 全 pending 允许整表替换 |
+| 已 start 不得换 plan | 已有 | **保持** | acquire `running`/`succeeded`/`failed` 后仍拒绝 |
+| Permission `plan` 模式 | 已有 | **不复用** | 那是写工具确认，不是业务改口 |
+| QueryEngine | 无 Climate 专用 diff | **保持为空** | 停顿靠工具错误 + Skill |
+| 口语 NLU / 从 `objective` 抽槽 | 明确非目标 | **否** | Climate 包不解析自由文本 |
+
+### DEC-G2-002 冻结（Day 23 立项，同日按冻结值实现并关闭）
+
+| 决策 | 冻结值 | 理由 |
+|---|---|---|
+| 本日性质 | G2 跟随：plan 与 acquire 之间最小停顿；**不是** G7、不是工单日 | A1 主路径交互 |
+| run 状态 | plan 后仍为 `running` | 少改 resume/`_require_running`；用事件区分「已计划未确认」 |
+| 确认载体 | 事件 `plan_confirmed`，其 `sequence` 必须 **大于** 当前有效的 `plan_created` | 换 plan 后旧确认作废，无需 schema v3 |
+| 确认 API | `ClimatePlanStepsInput.confirmed: bool = False`（`extra=forbid` 仍成立） | 不新增工具 |
+| 第一次 plan | `confirmed` 缺省或 `false`：写入/替换 DAG + `plan_created`，**不**写 `plan_confirmed`；返回 `step_ids`、各步 `title`/`action`、acquire 步的拟定 `mode`（若有） | 给用户看的摘要来自工具结果，不是 NLU |
+| 确认调用 | `confirmed=true`：若 `steps` 与当前 pending plan 拓扑+action 一致，只追加 `plan_confirmed`；若 `steps` 不同且全 pending，先整表替换再确认（一次调用允许「改口并确认」） | 少一轮工具 |
+| acquire 闸门 | 当前有效 `plan_created` 之后不存在 `plan_confirmed` → `CLIMATE_INVALID_TRANSITION`，`details.reason=plan_unconfirmed`，ToolResult `retryable=true` | 不新增错误码；不修改 `ERROR_RETRYABLE` 表缺省 false |
+| 换 plan | 仅当所有业务 step 仍为 `pending`；确认前、确认后但尚未 start acquire 都可以换 | A2 入口 |
+| 已 start | 保持「不得替换 plan」 | 下载已开始不能改数据源 |
+| Skill | plan 成功且未确认：必须用中文列出四步与数据来源（CDS/sample/local），**结束本轮**；禁止同一轮 acquire | 软约束 + 硬闸门 |
+| 第九工具 / TUI 按钮 | 本日不做 | P1 |
+| 真实 CDS TUI | 默认不作为 MUST | 离线契约足够 |
+| 错误码 | 不新增；复用 `CLIMATE_INVALID_TRANSITION` | 少改 envelope 测试面 |
+
+无评审不得改成「第九工具」「改 QueryEngine 等用户 stdin」「insert step」。
+`schema_version` 保持 2。Climate 包不解析 `objective` 自由文本。`full_auto` 下模型仍可能连点 `confirmed=true`；硬闸门只保证「没有确认事件就不能下」。不得把 Permission `plan` 模式写成业务确认。
+
+- **PLAN-001（MUST，G2 跟随，PASS）**：`climate_acquire_data` 在当前 run 上，若最新 `plan_created` 之后没有 `plan_confirmed` 事件，必须失败，不得开始下载、不得写 `.part`。错误码 `CLIMATE_INVALID_TRANSITION`，`details.reason` 必须为 `plan_unconfirmed`，ToolResult `retryable` 为 true。消息不得含绝对路径或秘密。默认 pytest 不触网。闸门必须在写盘 / 调 CDS **之前**；输入校验（非法 mode / cds_request）仍可先于闸门返回既有 `CLIMATE_INVALID_INPUT`。
+  （Day 23：`tests/test_climate/test_tools.py::test_acquire_without_plan_confirm_is_plan_unconfirmed`。闸门在 `replay_or_start_step` / 发布 / CDS retrieve 之前。`ERROR_RETRYABLE` 表中 `CLIMATE_INVALID_TRANSITION` 缺省仍为 false。）
+- **PLAN-002（MUST，G2 跟随，PASS）**：`climate_plan_steps` 增加可选布尔 `confirmed`，默认 false。`false`：写入或（全 pending 时）替换 DAG + `plan_created`，且不得写 `plan_confirmed`。`true`：在「全 pending」前提下，可替换或保持 plan，并追加 `plan_confirmed`。任一业务 step 已非 `pending` 时，`confirmed=true` 与换 plan 仍走既有 `CLIMATE_INVALID_TRANSITION`。禁止 bump `schema_version`。禁止第九工具。
+  （Day 23：`::test_acquire_after_plan_confirm_sample_succeeds`；`::test_replace_pending_plan_invalidates_old_confirmation`；`tests/test_climate/test_state.py::test_confirm_plan_appends_event_and_replace_resets`。`schema_version` 仍为 2。）
+- **SKILL-005（MUST，G2 跟随，PASS）**：`climate-ds` Skill 与 `TOOL_DESCRIPTIONS["climate_plan_steps"]` 必须写明：先 plan 并展示步骤与 mode，等待用户下一句；未确认不得 acquire。禁止暗示新 action / 新工具名。合同短语测试须覆盖「确认后再下载」（写入 `SKILL_CONTRACT_PHRASES` 一条即可）。
+  （Day 23：`tests/test_skills/test_climate_skill.py::test_climate_skill_plan_confirm_before_acquire`；`tests/test_climate/test_prompts.py::test_skill_contains_prompt_contract_phrases`。）
+- **TEST-012（MUST，G2 跟随，PASS）**：离线 pytest（`CLIMATE_INTEGRATION=0`）至少覆盖：（1）plan 后立即 acquire → `plan_unconfirmed`；（2）`confirmed=true` 后 acquire（sample 或假 CDS）可进入既有成功/校验路径；（3）确认前换一组 pending steps 成功，旧确认无效，须再确认；（4）acquire 已 start 后换 plan 仍失败。不得删除既有 plan 替换测试。
+  （Day 23 node ID 见矩阵 TEST-012。Climate collect 347；Climate+Skill 351 passed / 2 skipped。）
+
 ## 15. 阶段计划与验收门
 
 ### Phase G0：重新基线化规格
@@ -1231,6 +1283,8 @@ Day 21（2026-09-18）G4 跟随：DEC-G4-002 关闭；CDS-006～008 / TEST-011 �
 不改 QueryEngine、不做 Schema、不宣称 G7。
 Day 22（2026-09-18）G5 跟随：CDS 工具 Schema 前置（第 14D 节 SCHEMA-001 / SKILL-004 / TEST-010），
 不改 QueryEngine、不开第九工具、不做别名改写、**不宣称 Phase G7**。
+Day 23（2026-09-19）G2 跟随：plan 确认后再 acquire（第 14E 节 PLAN-001 / PLAN-002 / SKILL-005 /
+TEST-012），不改 QueryEngine、不开第九工具、不 bump `schema_version`、**不宣称 Phase G7**。
 
 - **PHASE-001（MUST，G0～G5，PASS）**：前一阶段全部适用需求达到
   PASS 且人工验收后才能进入下一阶段；阶段外实现、测试迁移或完成声明均视为验收失败。
@@ -1260,7 +1314,8 @@ Day 22（2026-09-18）G5 跟随：CDS 工具 Schema 前置（第 14D 节 SCHEMA-
   默认 registry 仍八工具；engine / `9b592ba` / `g5-skill` 无 diff。用户许可旁路证据：
   `evals/baselines/climate-real-g6-skill.json` 3/3（`cds_minimal_smoke`）；
   `evals/baselines/climate-real-g6-knowledge.json` 3/3（`cds_knowledge_smoke`，未覆盖历史 json）。
-  Day 22（2026-09-18）：G5 跟随 Schema 前置；**未**宣称 G7。）
+  Day 22（2026-09-18）：G5 跟随 Schema 前置；**未**宣称 G7。Day 23（2026-09-19）：G2 跟随
+  plan 确认后再 acquire；**未**宣称 G7。）
 - **DOC-001（MUST，G3，PASS）**：README 必须从空 workspace 给出可复制的离线 demo、预期产物、
   恢复步骤和测试命令，不要求密钥。
   （Day 09：`tests/test_climate/test_evals.py::test_readme_offline_demo_from_empty_workspace`；
@@ -1322,6 +1377,8 @@ Day 21（2026-09-18）G4 跟随 CDS retrieve 超时：CDS-006 / CDS-007 / CDS-00
 （Climate collect 331；Climate+Skill 333 passed / 2 skipped）。PHASE-001 保持既有阶段验收 PASS，不宣称 G7。
 Day 22（2026-09-18）G5 跟随 CDS 工具 Schema 前置：SCHEMA-001 / SKILL-004 / TEST-010 **PASS**
 （Climate collect 338；Climate+Skill 341 passed / 2 skipped）。PHASE-001 保持 G5 / G6 阶段验收 PASS，不宣称 G7。
+Day 23（2026-09-19）G2 跟随 plan 确认后再 acquire：PLAN-001 / PLAN-002 / SKILL-005 / TEST-012 **PASS**
+（Climate collect 347；Climate+Skill 351 passed / 2 skipped）。PHASE-001 保持 G5 / G6 阶段验收 PASS，不宣称 G7。
 
 | 需求 ID | 预定测试 / 评审 | 阶段 | 状态 |
 |---|---|---|---|
@@ -1390,7 +1447,7 @@ Day 22（2026-09-18）G5 跟随 CDS 工具 Schema 前置：SCHEMA-001 / SKILL-00
 | PROMPT-001 | `tests/test_climate/test_prompts.py::test_prompt_maps_paper_roles_to_existing_tools_and_four_actions`；`::test_prompt_forbids_free_plan_code_execution_and_browser_scraping`；`::test_tool_descriptions_come_from_prompt_module`；`::test_eval_system_prompt_embeds_skill_and_permission`；`::test_skill_contains_prompt_contract_phrases` | G5+ | PASS |
 | EVAL-004 | Day 16：`evals/climate/scenarios/report_quality_smoke.yaml`；`tests/test_climate/test_evals.py::test_report_quality_smoke_yaml_disclaims_bench85`；`::test_report_quality_rules_assertion_on_fixture_trace`；`::test_report_quality_smoke_real_offline` | G5 | PASS |
 | TEST-007 | Day 16：`uv run pytest tests/test_climate --collect-only -q`（284 tests）；`CLIMATE_INTEGRATION=0` 下 `uv run pytest tests/test_climate tests/test_skills/test_climate_skill.py -q`（286 passed, 1 skipped）。Day 17 路径 A/C 后：collect 285（+`test_real_cds_offgrid_candidates_are_audited`）；`CLIMATE_INTEGRATION=0` 下 286 passed, 2 skipped。`::test_metadata_module_does_not_import_selenium_or_cdsapi`；`::test_validate_module_does_not_import_selenium_or_execute_code`；`::test_cds_module_does_not_import_cdsapi`；`pyproject.toml` 无 selenium/playwright | G5 | PASS |
-| PHASE-001 | Day 10：G0～G3 PASS。Day 11：DEC-G4-001 关闭。Day 12：CDS-001～003 / SEC-002 mock PASS。Day 13：CDS-004 / TOOL-INSPECT-001 G4 mock PASS。Day 14：MODEL-001 3/3 与真实 CDS PASS。Day 15：G4 本机人工总验收 PASS。2026-09-02：GitHub Actions CI #3（`52fa338`）全绿。Day 16：G5 MUST 回填 PASS。Day 17（2026-09-03）：G5 本机人工总验收 PASS（Climate collect 284；Climate+Skill 286 passed / 1 skipped；Ruff PASS；四场景 `real_offline` 1.0；`report_quality_smoke` 通过；engine/baseline 无 diff）。Day 18：G6 需求 PASS。Day 19（2026-09-08）：G6 本机人工总验收 PASS（Climate collect 317；Climate+Skill 319 passed / 2 skipped；Ruff PASS；四场景 `real_offline` 1.0；`knowledge_alias_smoke` 通过；默认八工具；engine/`9b592ba` 无 diff）。Day 20（2026-09-08）：G6 跟随 CORPUS/EVAL/TEST PASS；**未**宣称 G7。Day 21（2026-09-18）：G4 跟随 CDS-006～008 / TEST-011 PASS；**未**宣称 G7。Day 22（2026-09-18）：G5 跟随 SCHEMA-001 / SKILL-004 / TEST-010 PASS；**未**宣称 G7 | G0～G6 | PASS |
+| PHASE-001 | Day 10：G0～G3 PASS。Day 11：DEC-G4-001 关闭。Day 12：CDS-001～003 / SEC-002 mock PASS。Day 13：CDS-004 / TOOL-INSPECT-001 G4 mock PASS。Day 14：MODEL-001 3/3 与真实 CDS PASS。Day 15：G4 本机人工总验收 PASS。2026-09-02：GitHub Actions CI #3（`52fa338`）全绿。Day 16：G5 MUST 回填 PASS。Day 17（2026-09-03）：G5 本机人工总验收 PASS（Climate collect 284；Climate+Skill 286 passed / 1 skipped；Ruff PASS；四场景 `real_offline` 1.0；`report_quality_smoke` 通过；engine/baseline 无 diff）。Day 18：G6 需求 PASS。Day 19（2026-09-08）：G6 本机人工总验收 PASS（Climate collect 317；Climate+Skill 319 passed / 2 skipped；Ruff PASS；四场景 `real_offline` 1.0；`knowledge_alias_smoke` 通过；默认八工具；engine/`9b592ba` 无 diff）。Day 20（2026-09-08）：G6 跟随 CORPUS/EVAL/TEST PASS；**未**宣称 G7。Day 21（2026-09-18）：G4 跟随 CDS-006～008 / TEST-011 PASS；**未**宣称 G7。Day 22（2026-09-18）：G5 跟随 SCHEMA-001 / SKILL-004 / TEST-010 PASS；**未**宣称 G7。Day 23（2026-09-19）：G2 跟随 PLAN-001 / PLAN-002 / SKILL-005 / TEST-012 PASS；**未**宣称 G7 | G0～G6 | PASS |
 | DOC-001 | `tests/test_climate/test_evals.py::test_readme_offline_demo_from_empty_workspace`；`::test_readme_documents_offline_mvp_demo_and_limits` | G3 | PASS |
 | RAG-001 | Day 18：`tests/test_climate/test_knowledge.py::test_rebuild_rejects_unsafe_source_dir`；`::test_rebuild_is_idempotent_and_writes_knowledge_dir`；`::test_knowledge_module_does_not_import_forbidden_stack` | G6 | PASS |
 | RAG-002 | Day 18：`::test_hybrid_search_recalls_t2m_parent`（`2m temperature` / `2 metre temperature` / `2 米气温` / `t2m`）；`::test_hybrid_is_not_always_first_paragraph` | G6 | PASS |
@@ -1409,6 +1466,10 @@ Day 22（2026-09-18）G5 跟随 CDS 工具 Schema 前置：SCHEMA-001 / SKILL-00
 | SCHEMA-001 | Day 22：`ClimateAcquireDataTool.to_api_schema()` 注入 `CdsRequestInput`；`tests/test_climate/test_cds.py::test_acquire_api_schema_exposes_catalog_long_names_not_t2m`；`::test_acquire_api_schema_forbids_additional_cds_request_properties`；`tests/test_climate/test_registry.py::test_climate_registry_names_unique_and_schema_exportable`。运行时字段仍为 dict，execute 仍 `parse_cds_request`。`query.py` / `query_engine.py` 无 diff | G5 跟随 | PASS |
 | SKILL-004 | Day 22：`tests/test_skills/test_climate_skill.py::test_climate_skill_cds_request_sample_and_forbidden_fields`；`tests/test_climate/test_prompts.py::test_cds_request_field_description_has_legal_sample_and_forbidden_fields`；`::test_skill_contains_prompt_contract_phrases` | G5 跟随 | PASS |
 | TEST-010 | Day 22：`tests/test_climate/test_cds.py::test_acquire_api_schema_exposes_catalog_long_names_not_t2m`；`::test_acquire_api_schema_forbids_additional_cds_request_properties`；`::test_acquire_illegal_payload_keeps_invalid_input_envelope`（`product_type` / `time` / `variables=["t2m"]`）；`::test_acquire_legal_seven_key_dict_still_succeeds_with_mock`。collect 338；Climate+Skill 341 passed, 2 skipped | G5 跟随 | PASS |
+| PLAN-001 | Day 23：`tests/test_climate/test_tools.py::test_acquire_without_plan_confirm_is_plan_unconfirmed`。未确认 acquire → `CLIMATE_INVALID_TRANSITION` / `details.reason=plan_unconfirmed` / ToolResult `retryable=true`；无 `.part`、step 仍 pending。闸门在 start/下载之前。`query.py` / `query_engine.py` 无 diff | G2 跟随 | PASS |
+| PLAN-002 | Day 23：`::test_acquire_after_plan_confirm_sample_succeeds`；`::test_replace_pending_plan_invalidates_old_confirmation`；`tests/test_climate/test_state.py::test_confirm_plan_appends_event_and_replace_resets`。`ClimatePlanStepsInput.confirmed` 默认 false；`schema_version` 仍为 2；无第九工具 | G2 跟随 | PASS |
+| SKILL-005 | Day 23：`tests/test_skills/test_climate_skill.py::test_climate_skill_plan_confirm_before_acquire`；`tests/test_climate/test_prompts.py::test_skill_contains_prompt_contract_phrases`。合同短语「确认后再下载」；未暗示 `climate_confirm_plan` / 第五类 action | G2 跟随 | PASS |
+| TEST-012 | Day 23：`::test_acquire_without_plan_confirm_is_plan_unconfirmed`；`::test_acquire_after_plan_confirm_sample_succeeds`；`::test_replace_pending_plan_invalidates_old_confirmation`；`::test_cannot_replace_plan_after_acquire_started`。既有 `::test_plan_cannot_replace_after_business_step_started` 保留。collect 347；Climate+Skill 351 passed, 2 skipped。四场景 `real_offline` 在 plan 输入加 `confirmed: true`（未关闸门，未改工具名顺序） | G2 跟随 | PASS |
 
 ## 17. Definition of Done
 
@@ -1451,6 +1512,9 @@ pytest node ID；假挂起不触网；未改 QueryEngine；未做 Schema / 第�
 Day 22 G5 跟随额外要求：DEC-G5-002 已写入；SCHEMA-001、SKILL-004、TEST-010 有实现或
 pytest node ID；运行时仍 `parse_cds_request`；未把内层模型嵌成字段类型；未改 QueryEngine；
 未默认九工具；未做别名静默改写或丢弃多余键；未覆盖历史 baseline json；**不宣称 G7**。
+Day 23 G2 跟随额外要求：DEC-G2-002 已写入；PLAN-001、PLAN-002、SKILL-005、TEST-012 有实现或
+pytest node ID；确认仅事件、不 bump `schema_version`；未改 QueryEngine；未默认九工具；
+未新增第五类 action；未覆盖历史 baseline json；**不宣称 G7**。
 
 ## 18. 已冻结决策与待决问题
 
@@ -1493,6 +1557,12 @@ pytest node ID；运行时仍 `parse_cds_request`；未把内层模型嵌成字�
   同一脚本打 BM25 vs hybrid 离线召回。禁止把 `knowledge_alias_smoke` 扩成评测全集、禁止把问句
   写回文档刷绿、禁止 Chroma / 真 Embedding / Agent ingest / SKILL 混仓。不是 Phase G7。
   详见第 14C 节。CORPUS-001 / EVAL-006 / EVAL-007 / TEST-009 已按命令证据 PASS。未改 `knowledge.py` 算法。
+- **DEC-G2-002（Day 23 立项冻结，同日按冻结值实现并关闭）**：G2 跟随仅做 plan 与 acquire 之间最小停顿：
+  `climate_plan_steps.confirmed`、事件 `plan_confirmed`、未确认 acquire 硬拒绝。禁止第九工具、
+  禁止第五类 action、禁止 bump `schema_version`、禁止改 QueryEngine、禁止工单 UI、禁止从
+  `objective` 做口语 NLU。错误码复用 `CLIMATE_INVALID_TRANSITION`，`details.reason=plan_unconfirmed`。
+  不是 Phase G7。详见第 14E 节。
+  PLAN-001 / PLAN-002 / SKILL-005 / TEST-012 已按离线契约 pytest 回填 PASS。
 
 ### 待决且明确阻塞
 
@@ -1518,3 +1588,5 @@ Day 21（2026-09-18）G4 跟随 DEC-G4-002 关闭；CDS-006～008 / TEST-011 PAS
 未做 Schema；未宣称 G7。真实 CDS TUI 默认未新开跑。
 Day 22（2026-09-18）G5 跟随 DEC-G5-002 关闭；SCHEMA-001 / SKILL-004 / TEST-010 PASS。未改 QueryEngine；
 未做别名改写；默认仍八工具；未宣称 G7。真实 CDS / `real_agent` 默认未重跑。
+Day 23（2026-09-19）G2 跟随 DEC-G2-002 关闭；PLAN-001 / PLAN-002 / SKILL-005 / TEST-012 PASS。未改 QueryEngine；
+默认仍八工具；`schema_version` 仍为 2；未宣称 G7。真实 CDS / `real_agent` 默认未重跑。

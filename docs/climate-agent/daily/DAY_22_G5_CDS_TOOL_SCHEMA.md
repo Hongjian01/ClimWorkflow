@@ -22,7 +22,7 @@ Schema 前置从 Day 21 顺延到本日，以便 Day 21 先修 retrieve 收尾�
 - **预计投入**：4～6 小时（SPEC 14D + schema 注入 + Skill 样例 + 离线契约测试；**默认不跑**真实 CDS / `real_agent`，除非用户显式允许）
 - **完成标志**：DEC-G5-002 已关闭；上述 MUST 有实现或 pytest node ID；CI 仍禁网；未改 QueryEngine；未覆盖历史 baseline json；未默认注册第九工具
 - **上一天**：[Day 21](DAY_21_G4_CDS_RETRIEVE_TIMEOUT.md)（G4 跟随：retrieve 超时与 .part 稳定发布）
-- **下一天**：未排
+- **下一天**：[Day 23](DAY_23_G2_PLAN_CONFIRM_BEFORE_ACQUIRE.md)（G2 跟随：plan 确认后再 acquire；不是 G7）
 
 ## 今日原则
 

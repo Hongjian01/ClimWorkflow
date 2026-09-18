@@ -102,6 +102,10 @@ class ClimatePlanStepsInput(BaseModel):
 
     run_id: str | None = None
     steps: list[ClimatePlanStepInput] = Field(min_length=4, max_length=32)
+    confirmed: bool = Field(
+        default=False,
+        description=FIELD_DESCRIPTIONS["plan_confirmed"],
+    )
 
     @field_validator("run_id")
     @classmethod
@@ -335,6 +339,7 @@ class ClimatePlanStepsTool(ClimateTool):
                 workspace,
                 run_id=arguments.run_id,
                 steps=list(arguments.steps),
+                confirmed=arguments.confirmed,
             ),
         )
 

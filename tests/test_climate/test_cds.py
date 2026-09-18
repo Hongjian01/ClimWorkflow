@@ -534,7 +534,7 @@ async def test_retries_do_not_increment_step_attempts(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     result, payload = await _invoke(
         acquire,
         workspace,
@@ -576,7 +576,7 @@ async def test_credentials_never_enter_logs_context_trace_or_toolresult(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
 
     with caplog.at_level(logging.DEBUG):
         result, payload = await _invoke(
@@ -726,7 +726,7 @@ async def test_fallback_is_explicit_and_audited(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
 
     corrupt_part = workspace / ".climate" / "data" / RUN_ID / ".cds-acquire.nc.dead.part"
     corrupt_part.parent.mkdir(parents=True, exist_ok=True)
@@ -821,7 +821,7 @@ async def test_fallback_false_returns_original_timeout_error(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     _, payload = await _invoke(
         acquire,
         workspace,
@@ -858,7 +858,7 @@ async def test_fallback_rejects_errors_not_frozen_in_spec(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
 
     real_build = cds_mod.build_cds_client
     disallowed: list[tuple[str, FakeCdsClient | None]] = [
@@ -921,7 +921,7 @@ async def test_fallback_switch_is_part_of_input_hash(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     request = _valid_request(allow_sample_fallback=True)
     _, first = await _invoke(
         acquire, workspace, step_id="acquire", mode="cds", cds_request=request
@@ -1010,7 +1010,7 @@ async def test_real_cds_minimal_netcdf_smoke(tmp_path: Path, caplog: pytest.LogC
     assert init and plan and acquire and inspect
 
     _, init_payload = await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    _, plan_payload = await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    _, plan_payload = await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     _, acquired = await _invoke(
         acquire,
         workspace,
@@ -1088,7 +1088,7 @@ async def test_real_cds_offgrid_candidates_are_audited(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     _, acquired = await _invoke(
         acquire,
         workspace,
@@ -1243,7 +1243,7 @@ async def test_candidate_audit_is_in_toolresult_and_does_not_imply_fallback(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     _, payload = await _invoke(
         acquire,
         workspace,
@@ -1513,7 +1513,7 @@ async def test_acquire_execute_offloads_hanging_cds_download(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
 
     loop_progressed = False
 
@@ -1620,7 +1620,7 @@ async def test_acquire_illegal_payload_keeps_invalid_input_envelope(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
 
     raw = {
         "step_id": "acquire",
@@ -1660,7 +1660,7 @@ async def test_acquire_legal_seven_key_dict_still_succeeds_with_mock(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     result, payload = await _invoke(
         acquire,
         workspace,

@@ -138,3 +138,17 @@ def test_climate_skill_cds_request_sample_and_forbidden_fields() -> None:
     assert "selenium" in lowered
     assert "exec(" not in lowered
     assert "subprocess" not in lowered
+
+
+def test_climate_skill_plan_confirm_before_acquire() -> None:
+    """SKILL-005：先展示计划并结束本轮；未确认不得 acquire；确认后再下载。"""
+    content = SKILL_PATH.read_text(encoding="utf-8")
+    assert "确认后再下载" in content
+    assert "未确认不得 acquire" in content
+    assert "confirmed=true" in content or "confirmed=true" in content.lower()
+    assert "结束本轮" in content
+    assert "climate_confirm_plan" not in content
+    assert "第五类" in content
+    lowered = content.lower()
+    assert "selenium" in lowered
+    assert "exec(" not in lowered

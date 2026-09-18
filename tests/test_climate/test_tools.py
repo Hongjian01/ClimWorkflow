@@ -296,8 +296,13 @@ async def test_plan_validates_dag_and_is_atomic(tmp_path: Path) -> None:
 
     version = ctx.version
     _, again = await _invoke(plan, workspace, steps=STANDARD_STEPS)
-    _assert_failure_envelope(again, "CLIMATE_INVALID_TRANSITION")
-    assert loads_run_context(_context_path(workspace).read_text(encoding="utf-8")).version == version
+    _assert_success_envelope(again)
+    ctx2 = loads_run_context(_context_path(workspace).read_text(encoding="utf-8"))
+    assert ctx2.status == "running"
+    assert ctx2.version == version + 1
+    assert [step.status for step in ctx2.steps] == ["pending"] * 4
+    assert sum(1 for event in ctx2.events if event.type == "plan_created") == 2
+    assert not any(event.type == "plan_confirmed" for event in ctx2.events)
 
 
 def _clone_steps(*overrides: dict[str, Any]) -> list[dict[str, Any]]:
@@ -402,7 +407,7 @@ async def test_plan_cannot_replace_after_business_step_started(tmp_path: Path) -
     assert init and plan and acquire
 
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    _, accepted = await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    _, accepted = await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     _assert_success_envelope(accepted)
     assert accepted["data"]["status"] == "running"
     await _invoke(acquire, workspace, step_id="acquire", mode="sample")
@@ -429,7 +434,7 @@ async def test_sample_is_deterministic_and_atomic(tmp_path: Path) -> None:
     assert init and plan and acquire
 
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     _, payload = await _invoke(acquire, workspace, step_id="acquire", mode="sample")
     _assert_success_envelope(payload)
 
@@ -459,7 +464,7 @@ async def test_sample_is_deterministic_and_atomic(tmp_path: Path) -> None:
 
     other = _workspace(tmp_path / "other")
     await _invoke(init, other, objective=OBJECTIVE, run_id=RUN_ID_B)
-    await _invoke(plan, other, steps=STANDARD_STEPS)
+    await _invoke(plan, other, steps=STANDARD_STEPS, confirmed=True)
     await _invoke(acquire, other, step_id="acquire", mode="sample")
     other_csv = (other / ".climate" / "data" / RUN_ID_B / "sample.csv").read_bytes()
     assert other_csv == raw
@@ -547,7 +552,7 @@ async def test_sample_and_local_are_deterministic_and_atomic(tmp_path: Path) -> 
     before_bytes = source.read_bytes()
 
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     _, payload = await _invoke(
         acquire, workspace, step_id="acquire", mode="local", path=source_rel
     )
@@ -666,7 +671,7 @@ async def test_local_dependency_and_idempotency(tmp_path: Path) -> None:
     source = _write_local_csv(workspace)
     other = _write_local_csv(workspace, "inputs/other.csv")
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=LOCAL_DEP_STEPS)
+    await _invoke(plan, workspace, steps=LOCAL_DEP_STEPS, confirmed=True)
 
     _, early = await _invoke(
         acquire, workspace, step_id="acquire", mode="local", path="inputs/obs.csv"
@@ -726,7 +731,7 @@ async def test_inspect_is_bounded_and_does_not_touch_dataset(tmp_path: Path) -> 
     assert init and plan and acquire and inspect
 
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     await _invoke(acquire, workspace, step_id="acquire", mode="sample")
 
     csv_path = workspace / ".climate" / "data" / RUN_ID / "sample.csv"
@@ -886,7 +891,7 @@ async def _prepare_through_inspect(
     inspect = registry.get("climate_inspect_dataset")
     assert init and plan and acquire and inspect
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=run_id)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     if mode == "local":
         relative = "inputs/obs.csv"
         source = workspace / "inputs" / "obs.csv"
@@ -1069,7 +1074,7 @@ async def test_plot_rejects_columns_paths_and_uninspected_data(tmp_path: Path) -
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, early_ws, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, early_ws, steps=STANDARD_STEPS)
+    await _invoke(plan, early_ws, steps=STANDARD_STEPS, confirmed=True)
     await _invoke(acquire, early_ws, step_id="acquire", mode="sample")
     early_before = _context_path(early_ws).read_bytes()
     early_plot = registry.get("climate_analyze_plot")
@@ -1330,7 +1335,7 @@ async def _acquire_cds_fixture(
     acquire = registry.get("climate_acquire_data")
     assert init and plan and acquire
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     _, payload = await _invoke(
         acquire,
         workspace,
@@ -1404,7 +1409,7 @@ async def test_inspect_rejects_truncated_and_masquerade(
     inspect = registry.get("climate_inspect_dataset")
     assert init and plan and acquire and inspect
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
 
     client = _FakeCdsClient(FIXTURES / "grib_magic.nc")
     monkeypatch.setattr(cds_mod, "build_cds_client", lambda: client)
@@ -1455,3 +1460,148 @@ async def test_inspect_optional_reader_missing(
     assert "C:\\" not in payload["error"]["message"]
     profile = workspace / ".climate" / "output" / RUN_ID / "profile.json"
     assert not profile.exists()
+
+
+ALTERNATE_STEPS: list[dict[str, Any]] = [
+    {
+        "step_id": "fetch",
+        "action": "acquire_data",
+        "title": "获取 CDS 数据",
+        "depends_on": [],
+    },
+    {
+        "step_id": "inspect",
+        "action": "inspect_dataset",
+        "title": "检查数据",
+        "depends_on": ["fetch"],
+    },
+    {
+        "step_id": "plot",
+        "action": "analyze_plot",
+        "title": "绘制图表",
+        "depends_on": ["inspect"],
+    },
+    {
+        "step_id": "report",
+        "action": "write_report",
+        "title": "撰写报告",
+        "depends_on": ["inspect", "plot"],
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_acquire_without_plan_confirm_is_plan_unconfirmed(tmp_path: Path) -> None:
+    """TEST-012 / PLAN-001：plan 后立即 acquire → plan_unconfirmed，不得写盘。"""
+    registry = create_climate_tool_registry()
+    workspace = _workspace(tmp_path)
+    init = registry.get("climate_init_workflow")
+    plan = registry.get("climate_plan_steps")
+    acquire = registry.get("climate_acquire_data")
+    assert init and plan and acquire
+
+    await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
+    _, planned = await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    _assert_success_envelope(planned)
+    assert planned["data"]["confirmed"] is False
+    ctx = loads_run_context(_context_path(workspace).read_text(encoding="utf-8"))
+    assert ctx.schema_version == 2
+    assert any(event.type == "plan_created" for event in ctx.events)
+    assert not any(event.type == "plan_confirmed" for event in ctx.events)
+
+    _, payload = await _invoke(acquire, workspace, step_id="acquire", mode="sample")
+    assert payload["ok"] is False
+    error = payload["error"]
+    assert error["code"] == "CLIMATE_INVALID_TRANSITION"
+    assert error["details"]["reason"] == "plan_unconfirmed"
+    assert error["retryable"] is True
+    assert "C:\\" not in error["message"]
+    assert "/home/" not in error["message"]
+    data_dir = workspace / ".climate" / "data" / RUN_ID
+    assert list(data_dir.rglob("*")) == [] if data_dir.exists() else True
+    assert list(workspace.rglob("*.part")) == []
+    after = loads_run_context(_context_path(workspace).read_text(encoding="utf-8"))
+    acquire_step = next(step for step in after.steps if step.step_id == "acquire")
+    assert acquire_step.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_acquire_after_plan_confirm_sample_succeeds(tmp_path: Path) -> None:
+    """TEST-012 / PLAN-002：confirmed=true 后 sample acquire 走既有成功路径。"""
+    registry = create_climate_tool_registry()
+    workspace = _workspace(tmp_path)
+    init = registry.get("climate_init_workflow")
+    plan = registry.get("climate_plan_steps")
+    acquire = registry.get("climate_acquire_data")
+    assert init and plan and acquire
+
+    await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
+    _, planned = await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
+    _assert_success_envelope(planned)
+    assert planned["data"]["confirmed"] is True
+    titles = [item["title"] for item in planned["data"]["steps"]]
+    assert titles == [step["title"] for step in STANDARD_STEPS]
+    ctx = loads_run_context(_context_path(workspace).read_text(encoding="utf-8"))
+    assert ctx.schema_version == 2
+    created = [event for event in ctx.events if event.type == "plan_created"]
+    confirmed = [event for event in ctx.events if event.type == "plan_confirmed"]
+    assert len(created) == 1 and len(confirmed) == 1
+    assert confirmed[0].sequence > created[0].sequence
+
+    _, payload = await _invoke(acquire, workspace, step_id="acquire", mode="sample")
+    _assert_success_envelope(payload)
+    assert (workspace / ".climate" / "data" / RUN_ID / "sample.csv").is_file()
+
+
+@pytest.mark.asyncio
+async def test_replace_pending_plan_invalidates_old_confirmation(tmp_path: Path) -> None:
+    """TEST-012：确认前/后整表换 pending plan 成功；旧确认无效，须再确认。"""
+    registry = create_climate_tool_registry()
+    workspace = _workspace(tmp_path)
+    init = registry.get("climate_init_workflow")
+    plan = registry.get("climate_plan_steps")
+    acquire = registry.get("climate_acquire_data")
+    assert init and plan and acquire
+
+    await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
+    _, replaced = await _invoke(plan, workspace, steps=ALTERNATE_STEPS)
+    _assert_success_envelope(replaced)
+    assert replaced["data"]["confirmed"] is False
+    assert replaced["data"]["step_ids"][0] == "fetch"
+    ctx = loads_run_context(_context_path(workspace).read_text(encoding="utf-8"))
+    created = [event for event in ctx.events if event.type == "plan_created"]
+    confirmed = [event for event in ctx.events if event.type == "plan_confirmed"]
+    assert len(created) == 2
+    assert all(item.sequence < created[-1].sequence for item in confirmed)
+
+    _, blocked = await _invoke(acquire, workspace, step_id="fetch", mode="sample")
+    assert blocked["ok"] is False
+    assert blocked["error"]["details"]["reason"] == "plan_unconfirmed"
+    assert blocked["error"]["retryable"] is True
+    assert not (workspace / ".climate" / "data" / RUN_ID / "sample.csv").exists()
+
+    _, rec = await _invoke(plan, workspace, steps=ALTERNATE_STEPS, confirmed=True)
+    _assert_success_envelope(rec)
+    assert rec["data"]["confirmed"] is True
+    _, payload = await _invoke(acquire, workspace, step_id="fetch", mode="sample")
+    _assert_success_envelope(payload)
+
+
+@pytest.mark.asyncio
+async def test_cannot_replace_plan_after_acquire_started(tmp_path: Path) -> None:
+    """TEST-012 / TOOL-PLAN-001：acquire 已 start 后换 plan 仍失败。"""
+    registry = create_climate_tool_registry()
+    workspace = _workspace(tmp_path)
+    init = registry.get("climate_init_workflow")
+    plan = registry.get("climate_plan_steps")
+    acquire = registry.get("climate_acquire_data")
+    assert init and plan and acquire
+
+    await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
+    await _invoke(acquire, workspace, step_id="acquire", mode="sample")
+    before = _context_path(workspace).read_bytes()
+    _, again = await _invoke(plan, workspace, steps=ALTERNATE_STEPS, confirmed=True)
+    _assert_failure_envelope(again, "CLIMATE_INVALID_TRANSITION")
+    assert _context_path(workspace).read_bytes() == before

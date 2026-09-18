@@ -22,6 +22,7 @@ tool_invocations:
   - name: climate_plan_steps
     session: 1
     input:
+      confirmed: true
       steps:
         - step_id: acquire
           action: acquire_data

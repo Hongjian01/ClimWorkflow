@@ -26,7 +26,7 @@ from openharness.climate.paths import (
     validate_write_zone,
 )
 from openharness.climate.repository import ContextRepository, PublishedFile
-from openharness.climate.state import WorkflowStateMachine
+from openharness.climate.state import WorkflowStateMachine, is_plan_confirmed
 
 _REQUIRED_ACTIONS = frozenset(
     {"acquire_data", "inspect_dataset", "analyze_plot", "write_report"}
@@ -105,16 +105,26 @@ def plan_steps(
     *,
     run_id: str | None,
     steps: list[Any],
+    confirmed: bool = False,
 ) -> tuple[dict[str, Any], str, int]:
     repo, state, resolved, current = _prepare_mutation(workspace, run_id)
     planned, topo = _validate_plan(steps, workspace=repo.workspace)
-    saved = state.accept_plan(
-        resolved,
-        planned,
-        expected_version=current.version,
-        topological_ids=topo,
-    )
-    return {"step_ids": topo, "status": saved.status}, saved.run_id, saved.version
+    same_dag = bool(current.steps) and _dag_signature(current.steps) == _dag_signature(planned)
+    if confirmed and same_dag and current.status == "running":
+        saved = state.confirm_plan(
+            resolved,
+            expected_version=current.version,
+            topological_ids=topo,
+        )
+    else:
+        saved = state.accept_plan(
+            resolved,
+            planned,
+            expected_version=current.version,
+            topological_ids=topo,
+            confirmed=confirmed,
+        )
+    return _plan_payload(saved, topo), saved.run_id, saved.version
 
 
 def acquire_data(
@@ -210,6 +220,9 @@ def acquire_data(
     replay = _replay_payload(current, step, digest)
     if replay is not None:
         return replay, current.run_id, current.version
+
+    # PLAN-001：确认闸门必须在写 .part / 下载 / start step 之前。
+    _require_plan_confirmed(current, workspace=repo.workspace)
 
     started = state.replay_or_start_step(
         resolved,
@@ -711,6 +724,70 @@ def _resolve_run_id(repo: ContextRepository, run_id: str | None) -> str:
             workspace=repo.workspace,
         )
     return index.active_run_id
+
+
+def _plan_payload(context: RunContext, topo: list[str]) -> dict[str, Any]:
+    """plan 工具摘要：步骤标题/动作，以及 acquire 步已成功时的拟定 mode（若有）。"""
+    by_id = {step.step_id: step for step in context.steps}
+    steps_out: list[dict[str, Any]] = []
+    for step_id in topo:
+        step = by_id[step_id]
+        item: dict[str, Any] = {
+            "step_id": step.step_id,
+            "title": step.title,
+            "action": step.action,
+        }
+        if step.action == "acquire_data":
+            mode = _proposed_acquire_mode(context, step)
+            if mode is not None:
+                item["mode"] = mode
+        steps_out.append(item)
+    return {
+        "step_ids": topo,
+        "status": context.status,
+        "confirmed": is_plan_confirmed(context),
+        "steps": steps_out,
+    }
+
+
+def _dag_signature(steps: list[Step]) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    """拓扑+action 签名；不含 title，换标题不算新 plan。"""
+    return tuple(
+        sorted((step.step_id, step.action, tuple(step.depends_on)) for step in steps)
+    )
+
+
+def _proposed_acquire_mode(context: RunContext, step: Step) -> str | None:
+    """仅在 acquire 已成功时回填 mode；plan 输入没有 mode 字段。"""
+    if step.status != "succeeded" or not step.result:
+        return None
+    path = step.result.get("path")
+    if not isinstance(path, str):
+        return None
+    name = path.rsplit("/", 1)[-1]
+    if name == "sample.csv":
+        return "sample"
+    if name.startswith("local-"):
+        return "local"
+    if name.startswith("cds-"):
+        return "cds"
+    requested = step.result.get("requested_mode")
+    if requested in {"sample", "local", "cds"}:
+        return requested
+    return None
+
+
+def _require_plan_confirmed(context: RunContext, *, workspace: Path) -> None:
+    if is_plan_confirmed(context):
+        return
+    error = climate_error(
+        "CLIMATE_INVALID_TRANSITION",
+        "计划尚未确认，不能获取数据",
+        details={"reason": "plan_unconfirmed", "field": "plan", "status": context.status},
+        workspace=workspace,
+    )
+    error.retryable = True
+    raise error
 
 
 def _require_running(context: RunContext, *, workspace: Path) -> None:

@@ -153,8 +153,9 @@ class WorkflowStateMachine:
         *,
         expected_version: int,
         topological_ids: list[str],
+        confirmed: bool = False,
     ) -> RunContext:
-        """一次 mutation：写入 plan 并将 run initialized → running。"""
+        """一次 mutation：写入 plan；initialized → running。confirmed 时同盘追加确认事件。"""
         current = self._repo.load_run(run_id)
         if current.version != expected_version:
             raise climate_error(
@@ -167,13 +168,6 @@ class WorkflowStateMachine:
                 },
                 workspace=self._repo.workspace,
             )
-        if (current.status, "plan_accepted") not in _RUN_TRANSITIONS:
-            raise climate_error(
-                "CLIMATE_INVALID_TRANSITION",
-                "非法 run 状态转换",
-                details={"status": current.status, "field": "plan_accepted"},
-                workspace=self._repo.workspace,
-            )
         if any(step.status != "pending" for step in current.steps):
             raise climate_error(
                 "CLIMATE_INVALID_TRANSITION",
@@ -181,19 +175,101 @@ class WorkflowStateMachine:
                 details={"status": current.status, "field": "plan_accepted"},
                 workspace=self._repo.workspace,
             )
+        if current.status == "initialized":
+            if (current.status, "plan_accepted") not in _RUN_TRANSITIONS:
+                raise climate_error(
+                    "CLIMATE_INVALID_TRANSITION",
+                    "非法 run 状态转换",
+                    details={"status": current.status, "field": "plan_accepted"},
+                    workspace=self._repo.workspace,
+                )
+            next_status = _RUN_TRANSITIONS[(current.status, "plan_accepted")]
+        elif current.status == "running":
+            # 全 pending 时允许整表替换；run 保持 running，不走 apply_run_event 转换表。
+            next_status = "running"
+        else:
+            raise climate_error(
+                "CLIMATE_INVALID_TRANSITION",
+                "非法 run 状态转换",
+                details={"status": current.status, "field": "plan_accepted"},
+                workspace=self._repo.workspace,
+            )
 
         now = _utc_now()
-        new_event = Event(
+        created = Event(
             sequence=len(current.events) + 1,
             timestamp=now,
             type="plan_created",
             step_id=None,
             data={"step_ids": list(topological_ids)},
         )
+        new_events = [*current.events, created]
+        if confirmed:
+            new_events.append(
+                Event(
+                    sequence=created.sequence + 1,
+                    timestamp=now,
+                    type="plan_confirmed",
+                    step_id=None,
+                    data={"step_ids": list(topological_ids)},
+                )
+            )
         updated = current.model_copy(
             update={
-                "status": _RUN_TRANSITIONS[(current.status, "plan_accepted")],
+                "status": next_status,
                 "steps": list(steps),
+                "updated_at": now,
+                "events": new_events,
+            }
+        )
+        return self._persist(updated, expected_version=expected_version)
+
+    def confirm_plan(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        topological_ids: list[str],
+    ) -> RunContext:
+        """全 pending 时追加 plan_confirmed；已确认则幂等返回。"""
+        current = self._repo.load_run(run_id)
+        if current.version != expected_version:
+            raise climate_error(
+                "CLIMATE_VERSION_CONFLICT",
+                "Context 版本冲突",
+                details={
+                    "expected_version": expected_version,
+                    "actual_version": current.version,
+                    "field": "run",
+                },
+                workspace=self._repo.workspace,
+            )
+        if current.status != "running":
+            raise climate_error(
+                "CLIMATE_INVALID_TRANSITION",
+                "非法 run 状态转换",
+                details={"status": current.status, "field": "plan_confirmed"},
+                workspace=self._repo.workspace,
+            )
+        if not current.steps or any(step.status != "pending" for step in current.steps):
+            raise climate_error(
+                "CLIMATE_INVALID_TRANSITION",
+                "已开始业务 step 后不得确认或替换 plan",
+                details={"status": current.status, "field": "plan_confirmed"},
+                workspace=self._repo.workspace,
+            )
+        if is_plan_confirmed(current):
+            return current
+        now = _utc_now()
+        new_event = Event(
+            sequence=len(current.events) + 1,
+            timestamp=now,
+            type="plan_confirmed",
+            step_id=None,
+            data={"step_ids": list(topological_ids)},
+        )
+        updated = current.model_copy(
+            update={
                 "updated_at": now,
                 "events": [*current.events, new_event],
             }
@@ -447,6 +523,23 @@ class WorkflowStateMachine:
                         path.unlink()
                     except OSError:
                         continue
+
+
+def is_plan_confirmed(context: RunContext) -> bool:
+    """最新 plan_created 之后是否存在 sequence 更大的 plan_confirmed。"""
+    created_seq: int | None = None
+    confirmed_after = False
+    for event in context.events:
+        if event.type == "plan_created":
+            created_seq = event.sequence
+            confirmed_after = False
+        elif (
+            event.type == "plan_confirmed"
+            and created_seq is not None
+            and event.sequence > created_seq
+        ):
+            confirmed_after = True
+    return confirmed_after
 
 
 def _find_step(

@@ -493,3 +493,43 @@ def test_replay_same_input_and_conflict_on_different_input(tmp_path: Path) -> No
             expected_version=saved.version,
         )
     assert exc_info2.value.code == "CLIMATE_IDEMPOTENCY_CONFLICT"
+
+
+def test_confirm_plan_appends_event_and_replace_resets(tmp_path: Path) -> None:
+    """PLAN-002：全 pending 时可确认；换 plan 后旧确认无效。"""
+    from openharness.climate.models import Step
+    from openharness.climate.state import is_plan_confirmed
+
+    steps = _standard_plan_steps()
+    ctx = _run(status="initialized", steps=[])
+    repo, _ws, saved = _repo_with_run(tmp_path, ctx)
+    sm = WorkflowStateMachine(repo)
+    step_models = [Step.model_validate(item) for item in steps]
+    topo = [item["step_id"] for item in steps]
+    running = sm.accept_plan(
+        RUN_ID,
+        step_models,
+        expected_version=saved.version,
+        topological_ids=topo,
+        confirmed=False,
+    )
+    assert running.status == "running"
+    assert running.schema_version == 2
+    assert not is_plan_confirmed(running)
+    confirmed = sm.confirm_plan(
+        RUN_ID, expected_version=running.version, topological_ids=topo
+    )
+    assert is_plan_confirmed(confirmed)
+    again = sm.confirm_plan(
+        RUN_ID, expected_version=confirmed.version, topological_ids=topo
+    )
+    assert again.version == confirmed.version
+    replaced = sm.accept_plan(
+        RUN_ID,
+        step_models,
+        expected_version=again.version,
+        topological_ids=topo,
+        confirmed=False,
+    )
+    assert not is_plan_confirmed(replaced)
+    assert replaced.status == "running"

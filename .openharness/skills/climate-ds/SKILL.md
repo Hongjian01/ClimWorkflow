@@ -45,8 +45,12 @@ ClimateAgent 论文用多智能体写下载脚本和分析代码。ClimWorkflow 
 
 1. `climate_init_workflow.objective` 写完整原句（含日期、区域、变量）。
 2. plan titles 写成「获取 2025-01-01 北京 2m 气温」「检查该数据集」「绘制 2m 气温直方图」「撰写含图表的报告」，而不是「获取数据」。
-3. CDS 时 `cds_request.variables` 用目录内 CDS 长名（如 `2m_temperature`），不要发明变量，
+3. `climate_plan_steps` 成功后必须用中文列出四步与拟定数据来源（CDS / sample / local），**结束本轮**，等待用户下一句。未确认不得 acquire。
+4. 用户确认或改口后，再次调用 `climate_plan_steps`：`confirmed=true`；改口须提交完整新 `steps`（整表替换，不 insert 单步）。**确认后再下载。**
+5. CDS 时 `cds_request.variables` 用目录内 CDS 长名（如 `2m_temperature`），不要发明变量，
    也不要用 GRIB 短名 `t2m` 当 acquire 变量。
+
+确认是 `climate_plan_steps` 的 `confirmed` 字段，不是新工具，也不是第五类 action。`full_auto` 下硬闸门仍挡住未确认的 acquire，但不保证模型一定等人打字。
 
 合法 `cds_request` 示例（七键；日期以用户任务为准）：
 
@@ -75,8 +79,8 @@ ClimateAgent 论文用多智能体写下载脚本和分析代码。ClimWorkflow 
 必须按依赖顺序调用，不得跳步：
 
 1. `climate_init_workflow` — 创建或显式 resume run，并切换 active run。
-2. `climate_plan_steps` — 校验并持久化 DAG。
-3. `climate_acquire_data` — 离线用 sample/local；G4 真实场景用 `mode=cds` 且 `allow_sample_fallback=false`。
+2. `climate_plan_steps` — 校验并持久化 DAG；先展示四步与拟定 mode，等待用户确认。
+3. `climate_acquire_data` — 确认后再下载。离线用 sample/local；G4 真实场景用 `mode=cds` 且 `allow_sample_fallback=false`。未确认不得 acquire。
 4. `climate_inspect_dataset` — 有界检查，不修改源数据集。
 5. `climate_analyze_plot` — 先 PNG，必要时真实 SVG。科学 NetCDF 用 histogram，y=t2m。
 6. `climate_write_report` — inspect 与 plot 成功后再写报告。
@@ -136,6 +140,7 @@ acquire / 写报告前**可以**调用 `climate_query_knowledge`，用文档解�
 - 禁止建议执行任意 Python、Shell 或生成代码沙箱。
 - 禁止 Selenium / 浏览器自动化抓取 CDS 门户。
 - 禁止用 `climate_query_knowledge` 代替目录闸门或 `climate_read_context`。
+- 禁止把确认做成第九工具或第五类 plan action；未确认不得 acquire，确认后再下载。
 
 ## 范围
 

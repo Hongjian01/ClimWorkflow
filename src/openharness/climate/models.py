@@ -31,6 +31,7 @@ EventType = Literal[
     "run_created",
     "active_run_changed",
     "plan_created",
+    "plan_confirmed",
     "step_started",
     "step_succeeded",
     "step_failed",

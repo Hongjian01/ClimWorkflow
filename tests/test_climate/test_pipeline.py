@@ -100,9 +100,10 @@ async def test_offline_vertical_slice_from_empty_workspace(tmp_path: Path) -> No
     _assert_failure(duplicate, "CLIMATE_RUN_EXISTS")
     assert ctx_path.read_bytes() == original
 
-    _, planned = await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    _, planned = await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     assert planned["ok"] is True
     assert planned["data"]["step_ids"] == ["acquire", "inspect", "plot", "report"]
+    assert planned["data"]["confirmed"] is True
     ctx = loads_run_context(ctx_path.read_text(encoding="utf-8"))
     assert ctx.status == "running"
     assert len(ctx.steps) == 4
@@ -259,7 +260,7 @@ async def test_inspect_rejects_unsafe_path(tmp_path: Path) -> None:
     assert init and plan and acquire and inspect
 
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     await _invoke(acquire, workspace, step_id="acquire", mode="sample")
 
     _, escaped = await _invoke(
@@ -296,7 +297,7 @@ async def test_offline_local_vertical_slice_from_empty_workspace(tmp_path: Path)
 
     _, created = await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
     assert created["ok"] is True
-    _, planned = await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    _, planned = await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     assert planned["ok"] is True
     _, acquired = await _invoke(
         acquire, workspace, step_id="acquire", mode="local", path="inputs/obs.csv"
@@ -380,7 +381,7 @@ async def test_offline_sample_svg_fallback_end_to_end(
     assert init and plan and acquire and inspect and plot and report and read
 
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     await _invoke(acquire, workspace, step_id="acquire", mode="sample")
     await _invoke(inspect, workspace, step_id="inspect")
     _, plotted = await _invoke(
@@ -507,7 +508,7 @@ async def _init_plan(workspace: Path) -> Any:
     plan = registry.get("climate_plan_steps")
     assert init and plan
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     return registry
 
 

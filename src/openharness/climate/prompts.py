@@ -41,6 +41,7 @@ SKILL_CONTRACT_PHRASES: tuple[str, ...] = (
     "可视化质量",
     "climate_query_knowledge",
     "不得用检索替代 climate_read_context",
+    "确认后再下载",
 )
 
 TOOL_DESCRIPTIONS: dict[str, str] = {
@@ -52,9 +53,13 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Plan-Agent：校验并持久化 Climate 工作流 DAG，使 run 进入 running。"
         "action 只能是 acquire_data / inspect_dataset / analyze_plot / write_report；"
         "title 须保留变量、阈值、时段、区域等原目标细节。"
+        "先 plan 并展示四步与拟定 mode，等待用户下一句；未确认不得 acquire。"
+        "用户确认或改口后再次调用本工具：confirmed=true；改口须提交完整新 steps。"
+        "确认后再下载。禁止同一轮立刻 climate_acquire_data。"
     ),
     "climate_acquire_data": (
         "Data-Agent：按 plan 获取数据集。支持 sample/local CSV 与 CDS。"
+        "必须先有 plan_confirmed；未确认会失败。确认后再下载。"
         "CDS 请求必须落在静态元数据目录内；系统最多顺序尝试 3 个合法候选。"
         "禁止生成或执行下载脚本，禁止 Selenium。"
     ),
@@ -88,6 +93,11 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 FIELD_DESCRIPTIONS: dict[str, str] = {
     "objective": "原样保留用户分析目标：变量、阈值、时段、区域、数据源。不得改写成抽象口号。",
     "plan_title": "本步做什么，以及用户目标里与本步相关的参数细节。不得只写「获取数据」。",
+    "plan_confirmed": (
+        "可选。默认 false：只写入或替换 DAG，不确认。"
+        "true：在全 pending 前提下确认当前 plan，或改口提交完整新 steps 并确认。"
+        "不是新工具，也不是第五类 action。确认后再下载。"
+    ),
     "cds_request": (
         "CDS 请求对象，仅允许七键 dataset/variables/area/date_start/date_end/format/"
         "allow_sample_fallback。合法示例："
@@ -114,6 +124,10 @@ PLAN_PROMPT = """\
 3. 标准顺序：acquire → inspect → plot → report。不得发明第五类 action，
    不得把 IVT / SPI / TC / TempestExtremes 写成新的 plan action。
 4. 每步 title 写清本步要做的事，并带上原目标中的变量、阈值、时段、区域。
+5. plan 成功后必须用中文列出四步与拟定数据来源（CDS/sample/local），然后结束本轮。
+   未确认不得 acquire。用户下一句确认或改口后，再调用 climate_plan_steps（confirmed=true；
+   改口则提交完整新 steps）。确认后再下载。禁止同一轮立刻 climate_acquire_data。
+   不得发明第九确认工具或第五类 action。full_auto 不保证人工一定停顿。
 Climate 包不解析自由文本科学流程；科学方法只能体现在工具参数与报告文字里。
 """
 
@@ -125,6 +139,7 @@ ACQUIRE_PROMPT = """\
 系统可对合法参数最多展开 3 个候选并顺序尝试，首次成功即停。
 口语别名可先查知识库，但 acquire 前仍须目录校验；检索命中 ≠ 允许下载。
 禁止 allow_sample_fallback 静默把 sample 当成真实 CDS。
+必须先经用户确认（climate_plan_steps confirmed=true）；确认后再下载。未确认不得 acquire。
 禁止 Selenium / 浏览器抓取门户。禁止 Bash 或 Python 下载。
 """
 

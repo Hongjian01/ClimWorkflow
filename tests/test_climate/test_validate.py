@@ -55,7 +55,7 @@ async def _complete_sample(tmp_path: Path):
     report = registry.get("climate_write_report")
     assert init and plan and acquire and inspect and plot and report
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     await _invoke(acquire, workspace, step_id="acquire", mode="sample")
     await _invoke(inspect, workspace, step_id="inspect")
     await _invoke(
@@ -128,7 +128,7 @@ async def test_validate_missing_report_returns_validation_failed(tmp_path: Path)
     plot = registry.get("climate_analyze_plot")
     assert init and plan and acquire and inspect and plot
     await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
-    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS, confirmed=True)
     await _invoke(acquire, workspace, step_id="acquire", mode="sample")
     await _invoke(inspect, workspace, step_id="inspect")
     await _invoke(
