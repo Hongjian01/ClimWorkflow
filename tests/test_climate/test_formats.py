@@ -342,3 +342,27 @@ def test_extension_magic_and_parser_must_agree(tmp_path: Path) -> None:
     with pytest.raises(ClimateError) as claimed:
         validate_published_artifact(grib_wrong_claim, "netcdf")
     assert claimed.value.details["reason"] == "magic_extension_mismatch"
+
+
+def test_netcdf_profile_opens_from_memory_not_workspace_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """in-process 路径必须走 memory=；默认 TUI 走子进程，本测试强制 in-process。"""
+    import netCDF4
+
+    monkeypatch.setenv("CLIMATE_NETCDF_INPROCESS", "1")
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    original = netCDF4.Dataset
+
+    def _spy(*args: object, **kwargs: object) -> object:
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+
+    netCDF4.Dataset = _spy  # type: ignore[method-assign]
+    try:
+        profile = read_bounded_profile(FIXTURES / "minimal_t2m.nc", "netcdf")
+    finally:
+        netCDF4.Dataset = original  # type: ignore[method-assign]
+    assert profile["variables"] == ["t2m"]
+    assert calls
+    assert any("memory" in kwargs and kwargs["memory"] for _args, kwargs in calls)

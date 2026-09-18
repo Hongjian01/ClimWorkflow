@@ -5,6 +5,10 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
+import subprocess
+import sys
+import tempfile
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
@@ -227,6 +231,7 @@ def acquire_data(
                 MEDIA_TYPES,
                 allow_sample_fallback,
                 download_cds_dataset_with_candidates,
+                _read_shared_payload,
             )
 
             try:
@@ -248,7 +253,7 @@ def acquire_data(
                 if isinstance(cds_exc.details.get("candidate_index"), int):
                     audit["candidate_index"] = cds_exc.details["candidate_index"]
             else:
-                digest_bytes = hashlib.sha256(cds_dest.read_bytes()).hexdigest()
+                digest_bytes = hashlib.sha256(_read_shared_payload(cds_dest)).hexdigest()
                 published = PublishedFile(
                     path=to_workspace_relative_posix(repo.workspace, cds_dest),
                     size_bytes=cds_dest.stat().st_size,
@@ -397,14 +402,13 @@ def inspect_dataset(
 
 
 def matplotlib_available() -> bool:
-    """检测 PNG renderer 所需的 matplotlib 是否可导入；测试可 monkeypatch。"""
-    try:
-        import matplotlib  # noqa: F401
-        from matplotlib.backends.backend_agg import FigureCanvasAgg  # noqa: F401
-        from matplotlib.figure import Figure  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    """检测 PNG renderer 所需的 matplotlib；测试可 monkeypatch。
+
+    用 find_spec，避免在 TUI 线程里 import matplotlib（Windows TkAgg 会死锁）。
+    """
+    import importlib.util
+
+    return importlib.util.find_spec("matplotlib") is not None
 
 
 def analyze_plot(
@@ -936,7 +940,7 @@ def _inspect_file(path: Path, *, relative_path: str, workspace: Path) -> dict[st
         from openharness.climate.formats import validate_published_artifact
         from openharness.climate.readers import read_scientific_profile
 
-        fmt = validate_published_artifact(path, claimed)
+        fmt = validate_published_artifact(path, claimed, parse=False)
         return read_scientific_profile(path, fmt)
     if path.name.lower().endswith(".csv"):
         return _inspect_csv(path, relative_path=relative_path, workspace=workspace)
@@ -1147,7 +1151,7 @@ def _prepare_scientific_plot(
     from openharness.climate.formats import validate_published_artifact
     from openharness.climate.readers import read_plot_values
 
-    fmt = validate_published_artifact(path, claimed_format)
+    fmt = validate_published_artifact(path, claimed_format, parse=False)
     values = read_plot_values(path, fmt, y_name)
     x_values = None
     if chart_type in {"line", "bar"}:
@@ -1300,49 +1304,58 @@ def _render_plot(prepared: PreparedPlot) -> tuple[bytes, str, str | None]:
 
 
 def _render_matplotlib_png(prepared: PreparedPlot) -> bytes:
-    import warnings
-    from io import BytesIO
-
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.figure import Figure
-
-    fig = Figure(figsize=(6.4, 4.8), dpi=100)
-    FigureCanvasAgg(fig)
-    ax = fig.add_subplot(1, 1, 1)
+    """子进程 Agg 渲染；TUI 进程不得 import matplotlib。"""
+    spec = {
+        "chart_type": prepared.chart_type,
+        "x_values": list(prepared.x_values) if prepared.x_values is not None else None,
+        "y_values": [float(item) for item in prepared.y_values],
+        "x_name": prepared.x_name,
+        "y_name": prepared.y_name,
+        "title": prepared.title,
+    }
+    spec_fd, spec_raw = tempfile.mkstemp(prefix="climate-plot-", suffix=".json")
+    out_fd, out_raw = tempfile.mkstemp(prefix="climate-plot-", suffix=".png")
+    os.close(spec_fd)
+    os.close(out_fd)
+    spec_path = Path(spec_raw)
+    out_path = Path(out_raw)
+    env = os.environ.copy()
+    env["MPLBACKEND"] = "Agg"
+    env["PYTHONUTF8"] = "1"
+    run_kwargs: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "capture_output": True,
+        "timeout": 45.0,
+        "env": env,
+        "check": False,
+        "close_fds": True,
+    }
+    if os.name == "nt":
+        run_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     try:
-        if prepared.chart_type == "line":
-            xs = list(range(len(prepared.y_values)))
-            ax.plot(xs, list(prepared.y_values), color="#2563eb")
-            if prepared.x_values:
-                step = max(len(xs) // 8, 1)
-                ticks = xs[::step]
-                ax.set_xticks(ticks)
-                ax.set_xticklabels([prepared.x_values[i] for i in ticks], rotation=45, ha="right")
-        elif prepared.chart_type == "bar":
-            labels = (
-                list(prepared.x_values)
-                if prepared.x_values is not None
-                else [str(index) for index in range(len(prepared.y_values))]
-            )
-            ax.bar(labels, list(prepared.y_values), color="#2563eb")
-            if len(labels) > 8:
-                ax.tick_params(axis="x", labelrotation=45)
-        else:
-            ax.hist(list(prepared.y_values), bins=_HISTOGRAM_BINS, color="#2563eb")
-        if prepared.title:
-            ax.set_title(prepared.title)
-        if prepared.y_name:
-            ax.set_ylabel(prepared.y_name)
-        if prepared.x_name and prepared.chart_type != "histogram":
-            ax.set_xlabel(prepared.x_name)
-        buf = BytesIO()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            fig.tight_layout()
-            fig.savefig(buf, format="png")
-        return buf.getvalue()
+        spec_path.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "openharness.climate.plot_worker",
+                str(spec_path),
+                str(out_path),
+            ],
+            **run_kwargs,
+        )
+        if completed.returncode != 0:
+            return b""
+        data = out_path.read_bytes()
+        return data if data.startswith(_PNG_MAGIC) else b""
+    except (OSError, subprocess.TimeoutExpired):
+        return b""
     finally:
-        fig.clear()
+        for path in (spec_path, out_path):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _xml_escape(text: str) -> str:

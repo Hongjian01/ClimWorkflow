@@ -1,10 +1,16 @@
 """G4 窄 Reader Adapter：NetCDF4 / eccodes，只返回 JSON 安全的有界 profile。
 
 不把 Dataset/GRIB handle/numpy 对象写入 Context。不执行 dataset 表达式或插件。
+Windows 上不得对磁盘路径直接 Dataset()：与仍占用的 CDS retrieve 同进程时会锁死。
 """
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+import tempfile
 import warnings
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -14,6 +20,9 @@ from typing import Any
 from openharness.climate.errors import ClimateError, climate_error
 from openharness.climate import formats as formats_mod
 
+# 必须在首次加载 HDF5/netCDF4 之前；关闭文件锁避免 Windows 上 Dataset 挂起。
+os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
+
 MAX_PROFILE_VARIABLES = 32
 MAX_COORD_SAMPLES = 32
 MAX_STATS_ELEMENTS = 65_536
@@ -22,6 +31,8 @@ _PROFILE_WARNING_LIMIT = 20
 _LAT_NAMES = ("latitude", "lat")
 _LON_NAMES = ("longitude", "lon")
 _TIME_NAMES = ("time",)
+DATASET_OPEN_TIMEOUT_SECONDS = 60.0
+_NETCDF_INPROCESS_ENV = "CLIMATE_NETCDF_INPROCESS"
 
 
 class ScientificReader(AbstractContextManager["ScientificReader"]):
@@ -48,6 +59,13 @@ def open_scientific_reader(path: Path, claimed_format: str) -> ScientificReader:
 
 
 def read_scientific_profile(path: Path, claimed_format: str) -> dict[str, Any]:
+    if claimed_format == "netcdf" and not _netcdf_inprocess():
+        if not formats_mod.netcdf4_available():
+            raise _missing("netCDF4")
+        payload = _netcdf_via_subprocess("profile", path)
+        if not isinstance(payload, dict):
+            raise _parser_error("netcdf")
+        return payload
     with open_scientific_reader(path, claimed_format) as reader:
         return reader.bounded_profile()
 
@@ -55,8 +73,94 @@ def read_scientific_profile(path: Path, claimed_format: str) -> dict[str, Any]:
 def read_plot_values(
     path: Path, claimed_format: str, y_name: str, *, limit: int = MAX_PLOT_POINTS
 ) -> tuple[float, ...]:
+    if claimed_format == "netcdf" and not _netcdf_inprocess():
+        if not formats_mod.netcdf4_available():
+            raise _missing("netCDF4")
+        payload = _netcdf_via_subprocess("values", path, extra=[y_name, str(limit)])
+        raw = payload.get("values") if isinstance(payload, dict) else None
+        if not isinstance(raw, list) or not raw:
+            raise climate_error(
+                "CLIMATE_DATA_INVALID",
+                "没有可用于绘图的数值",
+                details={"field": "y", "reason": "missing_variable"},
+            )
+        return tuple(float(item) for item in raw)
     with open_scientific_reader(path, claimed_format) as reader:
         return reader.bounded_values(y_name, limit=limit)
+
+
+def _netcdf_inprocess() -> bool:
+    return os.environ.get(_NETCDF_INPROCESS_ENV) == "1"
+
+
+def _netcdf_via_subprocess(
+    action: str, path: Path, extra: list[str] | None = None
+) -> dict[str, Any]:
+    """子进程解析，超时可杀；避免 HDF5 在 TUI 进程里占住 GIL。
+
+    TUI（Node 管道 + Windows 锁句柄）默认会把句柄遗传给子进程，HDF5 可能
+    因此卡死。这里关掉句柄继承，并把字节拷到临时文件再解析。
+    """
+    payload = _read_path_bytes(path)
+    fd, raw_tmp = tempfile.mkstemp(prefix="climate-nc-", suffix=".nc")
+    os.close(fd)
+    tmp_path = Path(raw_tmp)
+    command = [
+        sys.executable,
+        "-m",
+        "openharness.climate.netcdf_worker",
+        action,
+        str(tmp_path),
+    ]
+    if extra:
+        command.extend(extra)
+    env = os.environ.copy()
+    env["HDF5_USE_FILE_LOCKING"] = "FALSE"
+    env[_NETCDF_INPROCESS_ENV] = "1"
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    run_kwargs: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "capture_output": True,
+        "timeout": float(DATASET_OPEN_TIMEOUT_SECONDS),
+        "env": env,
+        "check": False,
+        "close_fds": True,
+    }
+    if os.name == "nt":
+        run_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        tmp_path.write_bytes(payload)
+        completed = subprocess.run(command, **run_kwargs)
+    except subprocess.TimeoutExpired:
+        raise climate_error(
+            "CLIMATE_DATA_INVALID",
+            "NetCDF 解析失败，可能已截断或损坏",
+            details={"field": "format", "reason": "parser_timeout"},
+        ) from None
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    try:
+        payload = json.loads((completed.stdout or b"").decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise _parser_error("netcdf") from None
+    if not isinstance(payload, dict):
+        raise _parser_error("netcdf")
+    if completed.returncode != 0 or payload.get("__climate_error__") is True:
+        code = payload.get("code")
+        message = payload.get("message")
+        details = payload.get("details")
+        if not isinstance(code, str) or not isinstance(message, str):
+            raise _parser_error("netcdf")
+        raise climate_error(
+            code,
+            message,
+            details=details if isinstance(details, dict) else {},
+        )
+    return payload
 
 
 def _missing(package: str) -> ClimateError:
@@ -74,6 +178,32 @@ def _parser_error(kind: str) -> ClimateError:
         f"{label} 解析失败，可能已截断或损坏",
         details={"field": "format", "reason": "parser_rejected"},
     )
+
+
+def _read_path_bytes(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError:
+        from openharness.climate.cds import _read_shared_payload
+
+        return _read_shared_payload(path)
+
+
+def _open_netcdf_from_memory(payload: bytes) -> Any:
+    """用内存缓冲区打开。超时由外层子进程负责，线程 join 在 GIL 下等不到。"""
+    from netCDF4 import Dataset
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            dataset = Dataset("in-memory.nc", "r", memory=payload)
+    except ClimateError:
+        raise
+    except Exception:
+        raise _parser_error("netcdf") from None
+    if dataset is None:
+        raise _parser_error("netcdf")
+    return dataset
 
 
 def _as_float(value: Any) -> float | None:
@@ -133,12 +263,10 @@ class NetcdfReaderAdapter(ScientificReader):
     def __enter__(self) -> NetcdfReaderAdapter:
         if not formats_mod.netcdf4_available():
             raise _missing("netCDF4")
-        from netCDF4 import Dataset
-
+        os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                self._ds = Dataset(self._path, "r")
+            payload = _read_path_bytes(self._path)
+            self._ds = _open_netcdf_from_memory(payload)
         except ClimateError:
             raise
         except Exception:

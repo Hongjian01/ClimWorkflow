@@ -60,12 +60,13 @@ CDS_NETCDF_LABEL = "NetCDF4 (Experimental)"
 
 
 def netcdf4_available() -> bool:
-    """检测 NetCDF 读取库；测试可 monkeypatch。"""
-    try:
-        from netCDF4 import Dataset  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    """检测 NetCDF 读取库；测试可 monkeypatch。
+
+    用 find_spec，避免在 TUI 进程里 import netCDF4/HDF5（Windows 上会占住 GIL）。
+    """
+    import importlib.util
+
+    return importlib.util.find_spec("netCDF4") is not None
 
 
 def eccodes_available() -> bool:
@@ -131,11 +132,16 @@ def validate_cds_allowlist(
 
 
 def validate_published_artifact(
-    path: Path, claimed_format: str, *, suffix_path: Path | None = None
+    path: Path,
+    claimed_format: str,
+    *,
+    suffix_path: Path | None = None,
+    parse: bool = True,
 ) -> str:
     """扩展名、magic、解析器三者一致才接受；返回标准化格式名。
 
     ``suffix_path`` 用于 ``.part`` 临时文件：按最终目标扩展名校验，读取的是 path。
+    ``parse=False`` 只做 magic/扩展名，避免 inspect 连开两次 NetCDF 子进程。
     """
     if claimed_format not in SUPPORTED_FORMATS:
         raise climate_error(
@@ -172,7 +178,8 @@ def validate_published_artifact(
             "扩展名、magic 与声称格式必须一致",
             details={"field": "format", "reason": "magic_extension_mismatch"},
         )
-    _parse_or_reject(path, claimed_format)
+    if parse:
+        _parse_or_reject(path, claimed_format)
     return claimed_format
 
 
@@ -185,8 +192,11 @@ def read_bounded_profile(path: Path, claimed_format: str) -> dict[str, Any]:
 
 
 def _parse_or_reject(path: Path, claimed_format: str) -> None:
-    from openharness.climate.readers import open_scientific_reader
+    from openharness.climate.readers import open_scientific_reader, read_scientific_profile
 
+    if claimed_format == "netcdf":
+        read_scientific_profile(path, claimed_format)
+        return
     with open_scientific_reader(path, claimed_format):
         return
 

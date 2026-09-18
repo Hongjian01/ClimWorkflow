@@ -33,6 +33,8 @@ PART_STABLE_SECONDS = 2.0
 PART_POLL_INTERVAL_SECONDS = 0.25
 FORMAT_EXTENSION = {"netcdf": ".nc", "grib": ".grib"}
 MEDIA_TYPES = {"netcdf": "application/x-netcdf", "grib": "application/x-grib"}
+# 半文件 truncated.nc=32B / truncated.grib=40B；最小合法 fixture 约 8KB / 179B。
+_MIN_PUBLISH_BYTES = {"netcdf": 256, "grib": 64}
 _RETRYABLE_CODES = frozenset({"CLIMATE_EXTERNAL_TIMEOUT", "CLIMATE_EXTERNAL_RATE_LIMIT"})
 _STABLE_PERMANENT_KINDS = frozenset({"auth", "invalid_request", "server_permanent", "unclassified"})
 
@@ -345,14 +347,23 @@ def _retrieve_with_timeout_and_stable_publish(
                 published = True
                 return True
             try:
-                _validate_part(part_path, dest_path, claimed_format)
-                _fsync_replace(part_path, dest_path)
+                # 不得对仍被 retrieve 占用的 .part 做 os.replace（Windows 会失败或阻塞）。
+                _publish_part_snapshot(part_path, dest_path, claimed_format)
             except ClimateError:
-                # 半文件、非法 magic，或 Windows 上文件仍被写入句柄锁住：不发布。
+                # 半文件、非法 magic，或此刻无法共享读取：下一轮再试。
                 return False
             published = True
             log.info("cds retrieve published stable part dataset=%s", dataset)
             return True
+
+    if dest_path.is_file():
+        try:
+            existing = _read_shared_payload(dest_path)
+            _validate_payload_header(existing, dest_path, claimed_format)
+            log.info("cds retrieve skipped; dest already published")
+            return dest_path
+        except ClimateError:
+            pass
 
     worker = threading.Thread(
         target=_retrieve,
@@ -394,8 +405,7 @@ def _retrieve_with_timeout_and_stable_publish(
     if retrieve_done.is_set() and not retrieve_error:
         if _try_publish():
             return dest_path
-        _validate_part(part_path, dest_path, claimed_format)
-        _fsync_replace(part_path, dest_path)
+        _publish_part_snapshot(part_path, dest_path, claimed_format)
         return dest_path
 
     if retrieve_error:
@@ -412,8 +422,157 @@ def _validate_part(part_path: Path, dest_path: Path, claimed_format: str) -> Non
     validate_published_artifact(part_path, claimed_format, suffix_path=dest_path)
 
 
+def _validate_payload_header(payload: bytes, dest_path: Path, claimed_format: str) -> None:
+    """只根据内存字节做 magic/扩展名闸门，避免在 Windows 上打开 HDF5 锁住 staging。"""
+    from openharness.climate.formats import (
+        SUPPORTED_FORMATS,
+        detect_magic,
+        format_from_extension,
+    )
+
+    if not payload:
+        raise climate_error(
+            "CLIMATE_DATA_INVALID",
+            "发布产物不得为空",
+            details={"field": "path", "reason": "empty"},
+        )
+    if claimed_format not in SUPPORTED_FORMATS:
+        raise climate_error(
+            "CLIMATE_FORMAT_UNSUPPORTED",
+            "不支持的科学数据格式",
+            details={"field": "format", "allowed": sorted(SUPPORTED_FORMATS)},
+        )
+    magic_format = detect_magic(payload[:8])
+    ext_format = format_from_extension(dest_path)
+    if magic_format is None:
+        raise climate_error(
+            "CLIMATE_DATA_INVALID",
+            "文件内容无法识别为 NetCDF 或 GRIB",
+            details={"field": "format", "reason": "unknown_magic"},
+        )
+    if ext_format is None or ext_format != magic_format or magic_format != claimed_format:
+        raise climate_error(
+            "CLIMATE_DATA_INVALID",
+            "扩展名、magic 与声称格式必须一致",
+            details={"field": "format", "reason": "magic_extension_mismatch"},
+        )
+    minimum = _MIN_PUBLISH_BYTES.get(claimed_format, 256)
+    if len(payload) < minimum:
+        raise climate_error(
+            "CLIMATE_DATA_INVALID",
+            "文件内容无法识别为 NetCDF 或 GRIB",
+            details={"field": "format", "reason": "truncated"},
+        )
+
+
+def _publish_part_snapshot(part_path: Path, dest_path: Path, claimed_format: str) -> None:
+    """共享读出 .part → 内存校验头/体积 → staging 原子改名为 dest。
+
+    发布路径禁止打开 netCDF4：Windows 上 HDF5 会锁住 dest，context 写不出
+    succeeded，TUI 一直 Running，尽管正式 .nc 已经在磁盘上。
+    """
+    staging = dest_path.parent / f".{dest_path.name}.{uuid.uuid4()}.stage.part"
+    try:
+        payload = _read_shared_payload(part_path)
+        _validate_payload_header(payload, dest_path, claimed_format)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        staging.write_bytes(payload)
+        _fsync_replace(staging, dest_path)
+    except ClimateError:
+        _cleanup_part(staging)
+        raise
+    except OSError as exc:
+        _cleanup_part(staging)
+        raise climate_error(
+            "CLIMATE_WRITE_FAILED",
+            "原子发布数据产物失败",
+            details={"reason": type(exc).__name__},
+        ) from None
+
+
+def _read_shared_payload(src: Path) -> bytes:
+    try:
+        payload = _read_file_bytes(src)
+    except OSError:
+        if os.name != "nt":
+            raise
+        payload = _win32_shared_read(src)
+    if not payload:
+        raise climate_error(
+            "CLIMATE_DATA_INVALID",
+            "发布产物不得为空",
+            details={"field": "path", "reason": "empty"},
+        )
+    return payload
+
+
+def _copy_shared_file(src: Path, dest: Path) -> None:
+    """尽量以共享读复制；失败时在 Windows 上用允许共享的 CreateFile 再读。"""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(_read_shared_payload(src))
+
+
+def _read_file_bytes(path: Path) -> bytes:
+    flags = os.O_RDONLY
+    if getattr(os, "O_BINARY", 0):
+        flags |= os.O_BINARY
+    fd = os.open(path, flags)
+    try:
+        chunks: list[bytes] = []
+        while True:
+            piece = os.read(fd, 1024 * 1024)
+            if not piece:
+                break
+            chunks.append(piece)
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def _win32_shared_read(path: Path) -> bytes:
+    """GENERIC_READ + 读/写/删除共享，避免 retrieve 占用时 open 失败。"""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.ReadFile.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.c_void_p,
+    ]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel32.CreateFileW(
+        str(path),
+        0x80000000,
+        0x00000007,
+        None,
+        3,
+        0x80,
+        None,
+    )
+    if handle == wintypes.HANDLE(-1).value:
+        raise OSError(ctypes.get_last_error(), "CreateFileW failed")
+    try:
+        buf = ctypes.create_string_buffer(1024 * 1024)
+        nread = wintypes.DWORD(0)
+        chunks: list[bytes] = []
+        while True:
+            ok = kernel32.ReadFile(handle, buf, len(buf), ctypes.byref(nread), None)
+            if ok == 0:
+                raise OSError(ctypes.get_last_error(), "ReadFile failed")
+            if nread.value == 0:
+                break
+            chunks.append(buf.raw[: nread.value])
+        return b"".join(chunks)
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _fsync_replace(part_path: Path, dest_path: Path) -> None:
-    """Windows 上 fsync 需要可写句柄；失败映射为稳定写入错误，不重试 retrieve。"""
+    """仅用于本进程独占的 staging；失败映射为稳定写入错误。"""
     try:
         with part_path.open("r+b") as handle:
             handle.flush()

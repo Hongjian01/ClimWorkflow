@@ -384,14 +384,19 @@ class ClimateInspectDatasetTool(ClimateTool):
         self, arguments: ClimateInspectDatasetInput, context: ToolExecutionContext
     ) -> ToolResult:
         workspace = Path(context.cwd).resolve()
-        return self._result(
-            lambda: inspect_dataset(
-                workspace,
-                run_id=arguments.run_id,
-                step_id=arguments.step_id,
-                path=arguments.path,
-            ),
-        )
+
+        def _run() -> ToolResult:
+            return self._result(
+                lambda: inspect_dataset(
+                    workspace,
+                    run_id=arguments.run_id,
+                    step_id=arguments.step_id,
+                    path=arguments.path,
+                ),
+            )
+
+        # 科学格式解析可能阻塞；卸到线程，避免再把 loop 卡死。
+        return await asyncio.to_thread(_run)
 
 
 class ClimateAnalyzePlotTool(ClimateTool):
@@ -403,18 +408,22 @@ class ClimateAnalyzePlotTool(ClimateTool):
         self, arguments: ClimateAnalyzePlotInput, context: ToolExecutionContext
     ) -> ToolResult:
         workspace = Path(context.cwd).resolve()
-        return self._result(
-            lambda: analyze_plot(
-                workspace,
-                run_id=arguments.run_id,
-                step_id=arguments.step_id,
-                path=arguments.path,
-                chart_type=arguments.chart_type,
-                x=arguments.x,
-                y=arguments.y,
-                title=arguments.title,
-            ),
-        )
+
+        def _run() -> ToolResult:
+            return self._result(
+                lambda: analyze_plot(
+                    workspace,
+                    run_id=arguments.run_id,
+                    step_id=arguments.step_id,
+                    path=arguments.path,
+                    chart_type=arguments.chart_type,
+                    x=arguments.x,
+                    y=arguments.y,
+                    title=arguments.title,
+                ),
+            )
+
+        return await asyncio.to_thread(_run)
 
 
 class ClimateWriteReportTool(ClimateTool):

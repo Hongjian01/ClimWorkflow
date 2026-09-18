@@ -1308,6 +1308,28 @@ class HangingAfterWriteCdsClient:
             self._block.wait()
 
 
+class HangingWithOpenHandleCdsClient:
+    """写入后保持写句柄不关闭、永不返回，模拟 Windows 上 cdsapi 占用 .part。"""
+
+    def __init__(self, *, source: Path) -> None:
+        self.source = source
+        self.calls: list[tuple[str, dict[str, Any], str]] = []
+        self.started = threading.Event()
+        self._block = threading.Event()
+        self._handle: Any = None
+
+    def retrieve(self, dataset: str, request: dict[str, Any], target: str) -> None:
+        self.calls.append((dataset, dict(request), target))
+        path = Path(target)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = path.open("wb")
+        self._handle.write(self.source.read_bytes())
+        self._handle.flush()
+        os.fsync(self._handle.fileno())
+        self.started.set()
+        self._block.wait()
+
+
 def _short_retrieve_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
     from openharness.climate import cds as cds_mod
 
@@ -1340,6 +1362,80 @@ def test_hanging_retrieve_publishes_stable_valid_part(
     assert elapsed < 5.0
     assert client.started.is_set()
     assert len(client.calls) == 1
+
+
+def test_hanging_retrieve_with_open_handle_still_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows 占用 .part 时仍须拷贝发布正式文件，不得干等 retrieve 返回。"""
+    from openharness.climate import cds as cds_mod
+
+    _short_retrieve_bounds(monkeypatch)
+    client = HangingWithOpenHandleCdsClient(source=FIXTURES / "minimal_t2m.nc")
+    dest = tmp_path / "era5.nc"
+    started = time.perf_counter()
+    published = cds_mod.download_cds_dataset(
+        CdsRequestInput.model_validate(_valid_request()),
+        dest,
+        client=client,
+    )
+    elapsed = time.perf_counter() - started
+    assert published == dest
+    assert dest.is_file()
+    assert dest.stat().st_size > 0
+    assert dest.read_bytes()[:8] == (FIXTURES / "minimal_t2m.nc").read_bytes()[:8]
+    assert elapsed < 5.0
+    assert client.started.is_set()
+    assert len(client.calls) == 1
+    if client._handle is not None:
+        client._handle.close()
+        client._handle = None
+    leftover_parts = [path for path in tmp_path.glob("**/*.part") if path.is_file()]
+    for leftover in leftover_parts:
+        leftover.unlink(missing_ok=True)
+
+
+def test_stable_publish_does_not_open_netcdf4(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """发布不得调用 netCDF4：Windows 上 Dataset 打开 dest 会卡住 acquire。"""
+    from openharness.climate import cds as cds_mod
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("publish 不得打开 NetCDF 解析器")
+
+    monkeypatch.setattr(cds_mod, "_validate_part", _boom)
+    _short_retrieve_bounds(monkeypatch)
+    client = HangingWithOpenHandleCdsClient(source=FIXTURES / "minimal_t2m.nc")
+    dest = tmp_path / "era5.nc"
+    published = cds_mod.download_cds_dataset(
+        CdsRequestInput.model_validate(_valid_request()),
+        dest,
+        client=client,
+    )
+    assert published == dest
+    assert dest.is_file()
+    if client._handle is not None:
+        client._handle.close()
+        client._handle = None
+
+
+def test_existing_valid_dest_does_not_call_retrieve(
+    tmp_path: Path,
+) -> None:
+    """正式 .nc 已在时不得再开 CDS retrieve，避免新的无 End 会话。"""
+    from openharness.climate import cds as cds_mod
+
+    dest = tmp_path / "era5.nc"
+    dest.write_bytes((FIXTURES / "minimal_t2m.nc").read_bytes())
+    client = FakeCdsClient(source=FIXTURES / "minimal_t2m.nc")
+    published = cds_mod.download_cds_dataset(
+        CdsRequestInput.model_validate(_valid_request()),
+        dest,
+        client=client,
+    )
+    assert published == dest
+    assert client.calls == []
 
 
 def test_hanging_retrieve_without_part_is_stable_timeout(
