@@ -89,7 +89,14 @@ FIELD_DESCRIPTIONS: dict[str, str] = {
     "objective": "原样保留用户分析目标：变量、阈值、时段、区域、数据源。不得改写成抽象口号。",
     "plan_title": "本步做什么，以及用户目标里与本步相关的参数细节。不得只写「获取数据」。",
     "cds_request": (
-        "CDS 请求对象。dataset/variables/area/date/format 必须在静态目录内；"
+        "CDS 请求对象，仅允许七键 dataset/variables/area/date_start/date_end/format/"
+        "allow_sample_fallback。合法示例："
+        '{"dataset":"reanalysis-era5-single-levels","variables":["2m_temperature"],'
+        '"area":[40.5,116.0,39.5,117.0],"date_start":"2025-01-01","date_end":"2025-01-01",'
+        '"format":"netcdf","allow_sample_fallback":false}。'
+        "variables 必须是 CDS 长名（如 2m_temperature），禁止用 t2m 当 CDS 变量；"
+        "t2m 只用于 climate_analyze_plot.y（NetCDF histogram / GRIB 短名）。"
+        "禁止 product_type、time 与凭证字段；系统内部固定 reanalysis 并展开 24 小时。"
         "越界会被 CLIMATE_METADATA_REJECTED。不要编造未登记变量。"
     ),
     "report_summary": (

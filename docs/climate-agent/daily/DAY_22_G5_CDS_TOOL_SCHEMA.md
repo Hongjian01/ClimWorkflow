@@ -295,21 +295,21 @@ docs/climate-agent/daily/DAY_22_G5_CDS_TOOL_SCHEMA.md。
 
 ## 验收清单
 
-- [ ] 当日 `git status` 已分类；无凭证/真实数据/`.part`/`evals/reports`/简历面试稿进入拟提交集。
-- [ ] `query.py` / `query_engine.py` 无 Climate diff。
-- [ ] 历史 baseline json（`9b592ba` / `g5-skill` / `g6-skill` / `g6-knowledge`）无拟提交 diff。
-- [ ] DEC-G5-002 已写入 SPEC 第 14D 节并与实现一致。
-- [ ] SCHEMA-001：API schema 中 `cds_request` 与 `CdsRequestInput` 一致；`additionalProperties: false`；variables 枚举为 CDS 长名。
-- [ ] 运行时仍 `parse_cds_request`；未把字段改成嵌套模型而导致 QueryEngine 明文成为唯一错误通道。
-- [ ] SKILL-004：合法 JSON 样例 + 禁止 `product_type`/`time`/`t2m`-as-variable；acquire 长名 vs plot 短名对照。
-- [ ] TEST-010：schema 可见性 + 非法载荷 `CLIMATE_INVALID_INPUT` + 合法 mock 成功。
-- [ ] 默认 registry 仍八工具；第九工具仅 `include_knowledge=True`。
-- [ ] 无 Selenium / 第五类 action / 代码执行 / 别名静默改写 / 丢弃多余键。
-- [ ] `CLIMATE_INTEGRATION=0` 下 Climate + Skill pytest 全绿（skip 仅 integration）。
-- [ ] Ruff PASS；`git diff --check` 干净。
-- [ ] 四场景 `real_offline` `real_pass_rate=1.0`（恰好 4 条核心 traces）。
-- [ ] PHASE-001 仍为 G5 / G6 阶段验收 PASS；**未**宣称 G7。
-- [ ] 未提交、未推送，除非用户另发指令。
+- [x] 当日 `git status` 已分类；无凭证/真实数据/`.part`/`evals/reports`/简历面试稿进入拟提交集。
+- [x] `query.py` / `query_engine.py` 无 Climate diff。
+- [x] 历史 baseline json（`9b592ba` / `g5-skill` / `g6-skill` / `g6-knowledge`）无拟提交 diff。
+- [x] DEC-G5-002 已写入 SPEC 第 14D 节并与实现一致。
+- [x] SCHEMA-001：API schema 中 `cds_request` 与 `CdsRequestInput` 一致；`additionalProperties: false`；variables 枚举为 CDS 长名。
+- [x] 运行时仍 `parse_cds_request`；未把字段改成嵌套模型而导致 QueryEngine 明文成为唯一错误通道。
+- [x] SKILL-004：合法 JSON 样例 + 禁止 `product_type`/`time`/`t2m`-as-variable；acquire 长名 vs plot 短名对照。
+- [x] TEST-010：schema 可见性 + 非法载荷 `CLIMATE_INVALID_INPUT` + 合法 mock 成功。
+- [x] 默认 registry 仍八工具；第九工具仅 `include_knowledge=True`。
+- [x] 无 Selenium / 第五类 action / 代码执行 / 别名静默改写 / 丢弃多余键。
+- [x] `CLIMATE_INTEGRATION=0` 下 Climate + Skill pytest 全绿（skip 仅 integration）。
+- [x] Ruff PASS；`git diff --check` 干净。
+- [x] 四场景 `real_offline` `real_pass_rate=1.0`（恰好 4 条核心 traces）。
+- [x] PHASE-001 仍为 G5 / G6 阶段验收 PASS；**未**宣称 G7。
+- [x] 未提交、未推送，除非用户另发指令。
 
 ## 风险与止损
 
@@ -350,5 +350,24 @@ Day 22：
 ## 日终报告（执行日填写）
 
 ```text
-（尚未执行。按上表在门闩通过后填写，无命令结果不得标 PASS。）
+Day 22：
+- 分支 / HEAD / dirty：feat/climworkflow-mvp / edb3c14 / dirty（Day 22 拟改文件 + 会话前 package-lock + .climate/ + 简历面试稿）
+- DEC-G5-002：已写入第 14D 节并按方案 B 关闭
+- SPEC 14D：已写入
+- SCHEMA-001（schema 注入方式；additionalProperties；variables 枚举）：ClimateAcquireDataTool.to_api_schema() 注入 CdsRequestInput.model_json_schema() 并补目录 8 个 CDS 长名；cds_request.additionalProperties=false；运行时字段仍 dict[str, Any] | None，execute 仍 parse_cds_request
+- SKILL-004：climate-ds 含合法七键 JSON + 禁止 product_type/time/t2m-as-variable；acquire 长名 vs plot 短名对照；FIELD_DESCRIPTIONS["cds_request"] 同步
+- TEST-010 / Climate collect：338（Day 21 为 331，+7）
+- Climate+Skill pytest（CLIMATE_INTEGRATION=0）：341 passed, 2 skipped
+- Ruff / git diff --check：PASS / 干净
+- real_offline 四场景：real_pass_rate=1.0；traces=4（sample_pipeline / cached_inspect / multiturn_recovery / pre_tool_output_guard）
+- 默认工具数量：8（第九工具仅 include_knowledge=True）
+- 是否改 QueryEngine：否
+- 是否做别名改写 / 默认九工具 / 真实 CDS：否（默认）
+- baseline 9b592ba / g5-skill / g6-* diff：空
+- QueryEngine diff：空
+- blocker/high：无
+- PHASE-001：保持 G5/G6 阶段验收 PASS；未宣称 G7
+- 全量 pytest：1467 passed, 26 failed, 13 skipped；失败均为 OpenHarness Windows POSIX/时区/shell/swarm，不含 tests/test_climate
+- 剩余 GAP：P1 别名表、默认第九工具、real_agent / 真实 CDS TUI（均非本日 MUST）
+- 是否建议提交：是（仅 Day 22 拟改文件；排除 package-lock、.climate/、evals/reports、简历面试稿）
 ```

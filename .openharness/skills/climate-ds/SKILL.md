@@ -45,7 +45,30 @@ ClimateAgent 论文用多智能体写下载脚本和分析代码。ClimWorkflow 
 
 1. `climate_init_workflow.objective` 写完整原句（含日期、区域、变量）。
 2. plan titles 写成「获取 2025-01-01 北京 2m 气温」「检查该数据集」「绘制 2m 气温直方图」「撰写含图表的报告」，而不是「获取数据」。
-3. CDS 时 `cds_request.variables` 用目录内名称（如 `2m_temperature`），不要发明变量。
+3. CDS 时 `cds_request.variables` 用目录内 CDS 长名（如 `2m_temperature`），不要发明变量，
+   也不要用 GRIB 短名 `t2m` 当 acquire 变量。
+
+合法 `cds_request` 示例（七键；日期以用户任务为准）：
+
+```json
+{
+  "dataset": "reanalysis-era5-single-levels",
+  "variables": ["2m_temperature"],
+  "area": [40.5, 116.0, 39.5, 117.0],
+  "date_start": "2025-01-01",
+  "date_end": "2025-01-01",
+  "format": "netcdf",
+  "allow_sample_fallback": false
+}
+```
+
+| 用途 | 名字 |
+|---|---|
+| `cds_request.variables` | `2m_temperature`（CDS 长名 / 目录） |
+| `climate_analyze_plot.y`（NetCDF histogram） | `t2m`（GRIB 短名 / inspect profile） |
+| 禁止出现在 `cds_request` | `product_type`、`time`、凭证字段、把 `t2m` 当作 variables |
+
+不要向 `cds_request` 填 CDS 门户字段 `product_type` 或 `time`；系统内部固定 `reanalysis` 并展开 24 小时。画图合同不变：科学 NetCDF 的 `y=t2m` 仍正确。
 
 ## 七工具顺序
 

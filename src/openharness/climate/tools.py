@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import re
 from abc import ABC
 from pathlib import Path
@@ -16,8 +17,9 @@ from openharness.climate.errors import (
     failure_envelope,
     success_envelope,
 )
+from openharness.climate.formats import DATASET_VARIABLES, SUPPORTED_DATASETS
 from openharness.climate.knowledge import query_knowledge
-from openharness.climate.models import ClimateQueryKnowledgeInput
+from openharness.climate.models import CdsRequestInput, ClimateQueryKnowledgeInput
 from openharness.climate.pipeline import (
     acquire_data,
     analyze_plot,
@@ -139,6 +141,60 @@ class ClimateAcquireDataInput(BaseModel):
             if self.cds_request is None:
                 raise ValueError("cds 模式必须提供 cds_request")
         return self
+
+
+_CDS_ISO_DATE_PATTERN = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+_ERA5_SINGLE_LEVELS = "reanalysis-era5-single-levels"
+
+
+def _merge_json_schema_defs(outer: dict[str, Any], inner: dict[str, Any]) -> None:
+    """把内层 $defs / definitions 并入外层，避免替换 cds_request 后留下悬空 $ref。"""
+    for key in ("$defs", "definitions"):
+        extra = inner.pop(key, None)
+        if extra:
+            outer.setdefault(key, {}).update(extra)
+
+
+def _cds_request_api_object_schema() -> dict[str, Any]:
+    """API 可见的 cds_request object：七键 + 目录长名枚举 + additionalProperties=false。"""
+    inner = copy.deepcopy(CdsRequestInput.model_json_schema())
+    inner["type"] = "object"
+    inner["additionalProperties"] = False
+    inner["description"] = FIELD_DESCRIPTIONS["cds_request"]
+    properties = inner.setdefault("properties", {})
+    allowed = sorted(DATASET_VARIABLES[_ERA5_SINGLE_LEVELS])
+    variables = properties.setdefault("variables", {})
+    items = variables.get("items")
+    if not isinstance(items, dict):
+        items = {"type": "string"}
+        variables["items"] = items
+    items["type"] = "string"
+    items["enum"] = allowed
+    dataset = properties.setdefault("dataset", {})
+    dataset["enum"] = sorted(SUPPORTED_DATASETS)
+    for key in ("date_start", "date_end"):
+        date_schema = properties.setdefault(key, {})
+        date_schema["type"] = "string"
+        date_schema["pattern"] = _CDS_ISO_DATE_PATTERN
+        if not date_schema.get("description"):
+            date_schema["description"] = "ISO 日期 YYYY-MM-DD"
+    return inner
+
+
+def _acquire_data_api_input_schema() -> dict[str, Any]:
+    """外层仍是 ClimateAcquireDataInput；仅把 cds_request 换成 CdsRequestInput 合同。"""
+    schema = copy.deepcopy(ClimateAcquireDataInput.model_json_schema())
+    inner = _cds_request_api_object_schema()
+    _merge_json_schema_defs(schema, inner)
+    schema.setdefault("properties", {})["cds_request"] = {
+        "anyOf": [inner, {"type": "null"}],
+        "default": None,
+        "description": FIELD_DESCRIPTIONS["cds_request"],
+    }
+    schema["additionalProperties"] = False
+    if schema.get("$defs") == {}:
+        schema.pop("$defs", None)
+    return schema
 
 
 class ClimateInspectDatasetInput(BaseModel):
@@ -287,6 +343,14 @@ class ClimateAcquireDataTool(ClimateTool):
     name = "climate_acquire_data"
     description = TOOL_DESCRIPTIONS["climate_acquire_data"]
     input_model = ClimateAcquireDataInput
+
+    def to_api_schema(self) -> dict[str, Any]:
+        """SCHEMA-001：API 合同注入 CdsRequestInput；运行时字段仍是 dict。"""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "input_schema": _acquire_data_api_input_schema(),
+        }
 
     async def execute(
         self, arguments: ClimateAcquireDataInput, context: ToolExecutionContext

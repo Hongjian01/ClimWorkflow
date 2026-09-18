@@ -1,6 +1,7 @@
 """Day 12 / CDS-001～003、SEC-002、TEST-006：CdsRequestInput、mock 下载与凭证脱敏。
 
 Day 21 / TEST-011：假 retrieve 挂起的墙钟超时与稳定 ``.part`` 发布。
+Day 22 / TEST-010：acquire API schema 前置；非法载荷仍 ``CLIMATE_INVALID_INPUT``。
 默认用例使用 fake client、禁网；不读取、不打印、不写入 .cdsapirc。
 真实 CDS 仅 ``climate_integration`` 且 CLIMATE_INTEGRATION=1、CDSAPI_KEY 存在时运行。
 """
@@ -1449,3 +1450,133 @@ async def test_acquire_execute_offloads_hanging_cds_download(
     step = next(item for item in context.steps if item.step_id == "acquire")
     assert step.status == "succeeded"
     _scan_for_secrets(payload, context.model_dump(mode="json"))
+
+
+# --- Day 22 / TEST-010：API schema 前置；非法载荷仍走 CLIMATE_INVALID_INPUT ---
+
+
+def _cds_request_object_schema(input_schema: dict[str, Any]) -> dict[str, Any]:
+    """取出 API schema 里 cds_request 的 object 合同（去掉 null 分支）。"""
+    node = input_schema["properties"]["cds_request"]
+    candidates = node.get("anyOf") or node.get("oneOf") or [node]
+    objects = [
+        item
+        for item in candidates
+        if isinstance(item, dict) and (item.get("type") == "object" or "properties" in item)
+    ]
+    assert len(objects) == 1, objects
+    assert "$ref" not in objects[0]
+    return objects[0]
+
+
+def test_acquire_api_schema_exposes_catalog_long_names_not_t2m() -> None:
+    """TEST-010：API schema 枚举 CDS 长名，不得把 t2m 列为 acquire 变量。"""
+    from openharness.climate.formats import DATASET_VARIABLES
+    from openharness.climate.registry import create_climate_tool_registry
+
+    registry = create_climate_tool_registry()
+    acquire = registry.get("climate_acquire_data")
+    assert acquire is not None
+    schema = acquire.to_api_schema()["input_schema"]
+    cds_schema = _cds_request_object_schema(schema)
+    allowed = sorted(DATASET_VARIABLES["reanalysis-era5-single-levels"])
+    enum = cds_schema["properties"]["variables"]["items"]["enum"]
+    assert enum == allowed
+    assert "2m_temperature" in enum
+    assert "t2m" not in enum
+    required = set(cds_schema.get("required") or [])
+    for key in ("dataset", "variables", "area", "date_start", "date_end", "format"):
+        assert key in cds_schema["properties"]
+        assert key in required
+    assert "allow_sample_fallback" in cds_schema["properties"]
+    assert "product_type" not in cds_schema["properties"]
+    assert "time" not in cds_schema["properties"]
+    runtime = acquire.input_model.model_fields["cds_request"].annotation
+    assert runtime == dict[str, Any] | None
+
+
+def test_acquire_api_schema_forbids_additional_cds_request_properties() -> None:
+    """TEST-010：cds_request additionalProperties 为 false，与 extra=forbid 一致。"""
+    registry = create_climate_tool_registry()
+    acquire = registry.get("climate_acquire_data")
+    assert acquire is not None
+    cds_schema = _cds_request_object_schema(acquire.to_api_schema()["input_schema"])
+    assert cds_schema.get("additionalProperties") is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("override", "field"),
+    [
+        ({"product_type": "reanalysis"}, "product_type"),
+        ({"time": ["00:00"]}, "time"),
+        ({"variables": ["t2m"]}, "variables"),
+    ],
+)
+async def test_acquire_illegal_payload_keeps_invalid_input_envelope(
+    tmp_path: Path, override: dict[str, Any], field: str
+) -> None:
+    """TEST-010：门户多余键与 t2m 变量仍是 CLIMATE_INVALID_INPUT envelope，不是 QueryEngine 明文。"""
+    workspace = _workspace(tmp_path)
+    registry = create_climate_tool_registry()
+    init = registry.get("climate_init_workflow")
+    plan = registry.get("climate_plan_steps")
+    acquire = registry.get("climate_acquire_data")
+    assert init and plan and acquire
+    await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+
+    raw = {
+        "step_id": "acquire",
+        "mode": "cds",
+        "cds_request": _valid_request(**override),
+    }
+    arguments = acquire.input_model.model_validate(raw)
+    result = await acquire.execute(arguments, ToolExecutionContext(cwd=workspace))
+    payload = json.loads(result.output)
+    assert result.is_error is True
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "CLIMATE_INVALID_INPUT"
+    assert payload["error"]["details"]["field"] == field
+    if field == "variables":
+        assert "2m_temperature" in payload["error"]["details"]["allowed"]
+        assert "t2m" not in payload["error"]["details"]["allowed"]
+    blob = json.dumps(payload)
+    assert "Invalid input for climate_acquire_data" not in blob
+    assert "Traceback" not in blob
+
+
+@pytest.mark.asyncio
+async def test_acquire_legal_seven_key_dict_still_succeeds_with_mock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TEST-010：合法七键 dict 仍走现有 mock acquire，不触网。"""
+    from openharness.climate import cds as cds_mod
+
+    monkeypatch.setattr(cds_mod.time, "sleep", lambda _seconds: None)
+    client = FakeCdsClient(source=FIXTURES / "minimal_t2m.nc")
+    monkeypatch.setattr(cds_mod, "build_cds_client", lambda: client)
+
+    workspace = _workspace(tmp_path)
+    registry = create_climate_tool_registry()
+    init = registry.get("climate_init_workflow")
+    plan = registry.get("climate_plan_steps")
+    acquire = registry.get("climate_acquire_data")
+    assert init and plan and acquire
+    await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+    result, payload = await _invoke(
+        acquire,
+        workspace,
+        step_id="acquire",
+        mode="cds",
+        cds_request=_valid_request(),
+    )
+    assert result.is_error is False
+    assert payload["ok"] is True
+    assert payload["data"]["requested_mode"] == "cds"
+    assert payload["data"]["effective_mode"] == "cds"
+    published = workspace / ".climate" / "data" / RUN_ID
+    assert any(path.suffix == ".nc" for path in published.rglob("*") if path.is_file())
+    assert list(published.rglob("*.part")) == []
+    _scan_for_secrets(payload)

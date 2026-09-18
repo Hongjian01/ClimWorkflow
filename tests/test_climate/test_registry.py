@@ -93,8 +93,16 @@ def test_climate_registry_names_unique_and_schema_exportable() -> None:
         assert schema["description"]
         assert "properties" in schema["input_schema"]
         dumped = tool.input_model.model_json_schema()
-        assert dumped == schema["input_schema"]
+        if tool.name == "climate_acquire_data":
+            # SCHEMA-001：API schema 注入内层 CdsRequestInput；运行时字段仍是 dict。
+            assert (
+                dumped["properties"]["cds_request"]
+                != schema["input_schema"]["properties"]["cds_request"]
+            )
+        else:
+            assert dumped == schema["input_schema"]
         assert dumped.get("additionalProperties") is False
+        assert schema["input_schema"].get("additionalProperties") is False
 
 
 def test_rejects_extra_fields_and_invalid_uuid_and_mode() -> None:

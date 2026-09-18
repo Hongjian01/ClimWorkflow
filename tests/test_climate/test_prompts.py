@@ -81,3 +81,18 @@ def test_skill_contains_prompt_contract_phrases() -> None:
     content = SKILL_PATH.read_text(encoding="utf-8")
     for phrase in SKILL_CONTRACT_PHRASES:
         assert phrase in content, phrase
+
+
+def test_cds_request_field_description_has_legal_sample_and_forbidden_fields() -> None:
+    """SKILL-004：工具字段说明与 Skill 同样包含合法样例与禁止字段，避免漂移。"""
+    from openharness.climate.prompts import FIELD_DESCRIPTIONS
+
+    text = FIELD_DESCRIPTIONS["cds_request"]
+    assert "reanalysis-era5-single-levels" in text
+    assert "2m_temperature" in text
+    assert "allow_sample_fallback" in text
+    assert "product_type" in text
+    assert "time" in text
+    assert "t2m" in text
+    assert "禁止" in text or "不要" in text
+    assert "climate_analyze_plot" in text or "y=t2m" in text or "y = t2m" in text

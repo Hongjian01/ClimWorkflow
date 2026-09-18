@@ -113,3 +113,28 @@ def test_climate_skill_knowledge_query_is_optional_and_not_recovery() -> None:
     lowered = content.lower()
     assert "exec(" not in lowered
     assert "subprocess" not in lowered
+
+
+def test_climate_skill_cds_request_sample_and_forbidden_fields() -> None:
+    """SKILL-004：合法 cds_request JSON 样例 + 禁止门户字段；长名/短名对照同时出现。"""
+    content = SKILL_PATH.read_text(encoding="utf-8")
+    assert '"dataset": "reanalysis-era5-single-levels"' in content
+    assert '"variables": ["2m_temperature"]' in content
+    assert '"date_start": "2025-01-01"' in content
+    assert '"date_end": "2025-01-01"' in content
+    assert '"format": "netcdf"' in content
+    assert '"allow_sample_fallback": false' in content
+    assert "product_type" in content
+    assert "禁止" in content or "不要" in content
+    assert "`time`" in content or "、time" in content or "time`" in content
+    assert "cds_request.variables" in content
+    assert "2m_temperature" in content
+    assert "climate_analyze_plot.y" in content or "y=t2m" in content
+    assert "t2m" in content
+    assert "CDS 长名" in content
+    assert "GRIB 短名" in content
+    lowered = content.lower()
+    assert "第五类" in content
+    assert "selenium" in lowered
+    assert "exec(" not in lowered
+    assert "subprocess" not in lowered
