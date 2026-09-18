@@ -3,34 +3,37 @@
 <p align="center">
   <img src="assets/climworkflow-tui-welcome.png" alt="ClimWorkflow TUI 欢迎屏" width="900">
 </p>
-<p align="center">
-  <img src="assets/climworkflow-tui-plan.png" alt="ClimWorkflow TUI：规划四步并等待确认" width="900">
-</p>
-<p align="center">
-  <img src="assets/climworkflow-tui-done.png" alt="ClimWorkflow TUI：acquire → inspect → plot → report 验收通过" width="900">
-</p>
-
-<p align="center">
-  <a href="README.md"><strong>简体中文</strong></a> ·
-  <a href="README.openharness.md"><strong>OpenHarness English</strong></a> ·
-  <a href="README.zh-CN.md"><strong>OpenHarness 简体中文</strong></a>
-</p>
 
 <p align="center">
   基于 <a href="https://github.com/HKUDS/OpenHarness">OpenHarness</a> 的可恢复气候数据智能体<br>
-  自然语言目标 → Tool Calling → 获取 / 检查 / 绘图 / 报告
+  自然语言 → 获取 / 检查 / 绘图 / 报告
 </p>
 
 <p align="center">
   <a href="https://github.com/Hongjian01/ClimWorkflow"><img src="https://img.shields.io/badge/repo-Hongjian01%2FClimWorkflow-2563eb" alt="ClimWorkflow"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0f766e" alt="MIT"></a>
-  <a href="docs/climate-agent/SPEC.md"><img src="https://img.shields.io/badge/spec-G0–G6-111827" alt="SPEC"></a>
+  <a href="docs/climate-agent/SPEC.md"><img src="https://img.shields.io/badge/spec-climate--agent-111827" alt="SPEC"></a>
   <img src="https://img.shields.io/badge/python-%3E%3D3.10-3776ab" alt="Python">
 </p>
 
 **工具循环、Hook、Skill、权限沙箱复用 OpenHarness。** 领域工具、磁盘 Context、中断恢复、CDS 可靠性与工作区检索是本项目自研（`src/openharness/climate/`）。
 
 独立仓库：[Hongjian01/ClimWorkflow](https://github.com/Hongjian01/ClimWorkflow)。从 OpenHarness fork 的开发记录在 [`feat/climworkflow-mvp`](https://github.com/Hongjian01/OpenHarness/tree/feat/climworkflow-mvp)。
+
+<table>
+  <tr>
+    <td width="58%" valign="top">
+      <img src="assets/climworkflow-tui-done.png" alt="ClimWorkflow TUI：四步工具链验收通过">
+    </td>
+    <td width="42%" valign="top">
+      <img src="assets/climworkflow-histogram.png" alt="同一次 run 的北京 ERA5 2 米气温直方图">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>计划确认后跑通获取 / 检查 / 绘图 / 报告（验收 9/10）</sub></td>
+    <td align="center"><sub>同一次 run：ERA5 北京 2 米气温，2026-09-10–15</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -44,6 +47,13 @@
 | **🧪 科学 IO 隔离** | **📚 诚实检索** |
 | NetCDF / matplotlib 在子进程中解析与出图，避免 Windows TUI 被 HDF5 GIL / TkAgg 冻住。 | 可选第九工具为 BM25 + 哈希向量 + RRF。**不是** Chroma / 商用 Embedding。检索不能放行 CDS，也不能代替读 Context。 |
 
+<p align="center">
+  <img src="assets/climworkflow-tui-plan.png" alt="规划四步后暂停，确认并补齐日期才下载" width="560">
+</p>
+<p align="center">
+  <sub>规划写入后暂停、确认前不下载。第一次提交因 DAG 依赖校验失败被拒绝，修正后再确认。</sub>
+</p>
+
 ---
 
 ## 🤔 解决什么问题
@@ -52,7 +62,7 @@
 
 ClimWorkflow 把 run 落在工作区磁盘上：状态机管能不能执行，计划闸门管人能不能改口，工具失败返回结构化错误码而不是口头「成功了」。
 
-Day 10（2026-08-28）人工验收后，G0～G3 称谓为 **ClimWorkflow Offline Engineering MVP**。后续阶段已接入真实 CDS、真实模型冒烟、计划确认，以及可选的工作区文档检索。
+离线工程路径已人工验收。之后接入真实 CDS、真实模型冒烟、计划确认，以及可选的工作区文档检索。阶段划分与验收口径见 [SPEC](docs/climate-agent/SPEC.md)。
 
 ---
 
@@ -160,7 +170,7 @@ uv run climworkflow resume --workspace climworkflow-demo
 
 `report.md` 只用相对路径引用图。脱敏样例见 [examples/offline-demo](examples/offline-demo/)。
 
-### 4. 交互 TUI（可选）
+### 4. 交互 TUI（截图中的界面）
 
 配置模型后：
 
@@ -216,7 +226,7 @@ uv run python -m evals --suite climate --mode real_agent `
   --baseline-out evals/baselines/climate-real-<commit>.json
 ```
 
-无 `--agent-config` 时 G3 仍拒绝 `real_agent`（`CLIMATE_DEPENDENCY_MISSING`）。
+未提供 `--agent-config` 时，套件拒绝 `real_agent`（`CLIMATE_DEPENDENCY_MISSING`）。
 
 工作区检索召回（离线，默认不注册第九工具）：
 
@@ -242,14 +252,16 @@ uv run python scripts/climate_knowledge_recall.py
 
 ## 📌 已知限制
 
-- 离线 Demo（G0～G3）不要求 CDS 或在线模型。不要把 `synthetic_dry_run` 当成真实执行。
-- G4 CDS 仅静态合法清单（`reanalysis-era5-single-levels` + 冻结变量）。
+- 离线 Demo 不要求 CDS 或在线模型。不要把 `synthetic_dry_run` 当成真实执行。
+- CDS 仅静态合法清单（`reanalysis-era5-single-levels` + 冻结变量）。
 - 不是通用 DAG 调度器，也不是任意 NetCDF/GRIB 科学计算栈。
 - 工作区外路径一律拒绝。
 - `full_auto` 下模型仍可能自己 `confirmed=true`；硬闸门只保证「没有确认事件就不能下载」。
 - 全仓库 `pytest -q` 在 Windows 上仍可能有上游 OpenHarness 环境失败；气候回归以 `tests/test_climate` 为准。
 - 未合入上游 HKUDS。Fork CI 曾于 2026-09-02 在 Python 3.10/3.11、Ruff、frontend typecheck 全绿（[run 33604624255](https://github.com/Hongjian01/OpenHarness/actions/runs/33604624255)）。
 - 不要提交密钥、`.cdsapirc`、下载的 ERA5、`.part`、缓存或 `evals/reports/*.json`。
+
+阶段编号与门禁细节见 [SPEC](docs/climate-agent/SPEC.md)。
 
 ---
 
@@ -266,4 +278,4 @@ uv run python scripts/climate_knowledge_recall.py
 
 开发与验收约定见 SPEC。请勿把真实 CDS 产物、凭证或简历草稿推进仓库。
 
-MIT，见 [LICENSE](LICENSE)。OpenHarness 版权归上游 [HKUDS/OpenHarness](https://github.com/HKUDS/OpenHarness)。
+MIT，见 [LICENSE](LICENSE)。LICENSE 保留上游 OpenHarness 版权声明；本仓库在其上增加气候领域层。OpenHarness 版权归 [HKUDS/OpenHarness](https://github.com/HKUDS/OpenHarness)。

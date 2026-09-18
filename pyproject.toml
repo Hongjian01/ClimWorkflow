@@ -5,13 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "openharness-ai"
 version = "0.1.9"
-description = "Open-source Python port of Claude Code - an AI-powered CLI coding assistant"
+description = "ClimWorkflow — recoverable climate-data agent (acquire, inspect, plot, report)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
     { name = "novix-science" },
 ]
+keywords = ["climworkflow", "climate", "agent", "era5", "openharness"]
 
 dependencies = [
     "anthropic>=0.40.0",
@@ -66,6 +67,11 @@ oh = "openharness.cli:app"
 openh = "openharness.cli:app"
 ohmo = "ohmo.cli:app"
 climworkflow = "openharness.climate.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/Hongjian01/ClimWorkflow"
+Documentation = "https://github.com/Hongjian01/ClimWorkflow/blob/main/docs/climate-agent/SPEC.md"
+Upstream = "https://github.com/HKUDS/OpenHarness"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openharness", "ohmo"]
