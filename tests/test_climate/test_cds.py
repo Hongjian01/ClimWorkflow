@@ -1,15 +1,19 @@
 """Day 12 / CDS-001～003、SEC-002、TEST-006：CdsRequestInput、mock 下载与凭证脱敏。
 
+Day 21 / TEST-011：假 retrieve 挂起的墙钟超时与稳定 ``.part`` 发布。
 默认用例使用 fake client、禁网；不读取、不打印、不写入 .cdsapirc。
 真实 CDS 仅 ``climate_integration`` 且 CLIMATE_INTEGRATION=1、CDSAPI_KEY 存在时运行。
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import socket
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -1268,3 +1272,180 @@ async def test_candidate_audit_is_in_toolresult_and_does_not_imply_fallback(
     dumped = json.dumps(context.model_dump(mode="json"), ensure_ascii=False)
     assert FAKE_SECRET not in dumped
     assert "sk-" not in dumped.lower()
+
+
+# --- Day 21 / TEST-011：假 retrieve 挂起 ---
+
+
+class HangingAfterWriteCdsClient:
+    """写入预定字节后永不返回，模拟 cdsapi/multiurl 收尾挂起。"""
+
+    def __init__(
+        self,
+        *,
+        source: Path | None = None,
+        payload: bytes | None = None,
+        hang: bool = True,
+    ) -> None:
+        self.source = source
+        self.payload = payload
+        self.hang = hang
+        self.calls: list[tuple[str, dict[str, Any], str]] = []
+        self.started = threading.Event()
+        self._block = threading.Event()
+
+    def retrieve(self, dataset: str, request: dict[str, Any], target: str) -> None:
+        self.calls.append((dataset, dict(request), target))
+        path = Path(target)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if self.payload is not None:
+            path.write_bytes(self.payload)
+        elif self.source is not None:
+            path.write_bytes(self.source.read_bytes())
+        self.started.set()
+        if self.hang:
+            self._block.wait()
+
+
+def _short_retrieve_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    from openharness.climate import cds as cds_mod
+
+    monkeypatch.setattr(cds_mod, "RETRIEVE_TIMEOUT_SECONDS", 0.6)
+    monkeypatch.setattr(cds_mod, "PART_STABLE_SECONDS", 0.15)
+    monkeypatch.setattr(cds_mod, "PART_POLL_INTERVAL_SECONDS", 0.05)
+
+
+def test_hanging_retrieve_publishes_stable_valid_part(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TEST-011 / CDS-008：写满合法 fixture 后挂起，仍须原子发布且无 .part 残留。"""
+    from openharness.climate import cds as cds_mod
+
+    _short_retrieve_bounds(monkeypatch)
+    client = HangingAfterWriteCdsClient(source=FIXTURES / "minimal_t2m.nc")
+    dest = tmp_path / "era5.nc"
+    started = time.perf_counter()
+    published = cds_mod.download_cds_dataset(
+        CdsRequestInput.model_validate(_valid_request()),
+        dest,
+        client=client,
+    )
+    elapsed = time.perf_counter() - started
+    assert published == dest
+    assert dest.is_file()
+    assert dest.stat().st_size > 0
+    assert dest.read_bytes()[:8] == (FIXTURES / "minimal_t2m.nc").read_bytes()[:8]
+    assert list(tmp_path.glob("**/*.part")) == []
+    assert elapsed < 5.0
+    assert client.started.is_set()
+    assert len(client.calls) == 1
+
+
+def test_hanging_retrieve_without_part_is_stable_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TEST-011 / CDS-006：retrieve 永不返回且无合法 .part → CLIMATE_EXTERNAL_TIMEOUT。"""
+    from openharness.climate import cds as cds_mod
+
+    _short_retrieve_bounds(monkeypatch)
+    monkeypatch.setattr(cds_mod.time, "sleep", lambda _seconds: None)
+    client = HangingAfterWriteCdsClient(payload=None, source=None)
+    dest = tmp_path / "era5.nc"
+    started = time.perf_counter()
+    with pytest.raises(ClimateError) as exc_info:
+        cds_mod.download_cds_dataset(
+            CdsRequestInput.model_validate(_valid_request()),
+            dest,
+            client=client,
+        )
+    elapsed = time.perf_counter() - started
+    err = exc_info.value
+    assert err.code == "CLIMATE_EXTERNAL_TIMEOUT"
+    assert err.details == {"reason": "timeout"}
+    assert not dest.exists()
+    assert list(tmp_path.glob("**/*.part")) == []
+    assert elapsed < 8.0
+    dumped = json.dumps(err.to_error_object(), ensure_ascii=False)
+    assert str(tmp_path) not in dumped
+    assert "http" not in dumped.lower()
+    assert FAKE_SECRET not in dumped
+    assert "cdsapirc" not in dumped.lower()
+
+
+def test_hanging_retrieve_half_file_is_not_published(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TEST-011 / CDS-008：稳定但非法的半文件不得 os.replace。"""
+    from openharness.climate import cds as cds_mod
+
+    _short_retrieve_bounds(monkeypatch)
+    monkeypatch.setattr(cds_mod.time, "sleep", lambda _seconds: None)
+    dest = tmp_path / "era5.nc"
+    truncated = (FIXTURES / "truncated.nc").read_bytes()
+    client = HangingAfterWriteCdsClient(payload=truncated)
+    with pytest.raises(ClimateError) as exc_info:
+        cds_mod.download_cds_dataset(
+            CdsRequestInput.model_validate(_valid_request()),
+            dest,
+            client=client,
+        )
+    err = exc_info.value
+    assert err.code in {"CLIMATE_EXTERNAL_TIMEOUT", "CLIMATE_DATA_INVALID"}
+    assert not dest.exists()
+    assert list(tmp_path.glob("**/*.part")) == []
+    dumped = json.dumps(err.to_error_object(), ensure_ascii=False)
+    assert FAKE_SECRET not in dumped
+    assert "http" not in dumped.lower()
+
+
+@pytest.mark.asyncio
+async def test_acquire_execute_offloads_hanging_cds_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TEST-011 / CDS-007：假挂起时事件循环仍能推进；成功路径无 .part。"""
+    from openharness.climate import cds as cds_mod
+
+    _short_retrieve_bounds(monkeypatch)
+    client = HangingAfterWriteCdsClient(source=FIXTURES / "minimal_t2m.nc")
+    monkeypatch.setattr(cds_mod, "build_cds_client", lambda: client)
+
+    workspace = _workspace(tmp_path)
+    registry = create_climate_tool_registry()
+    init = registry.get("climate_init_workflow")
+    plan = registry.get("climate_plan_steps")
+    acquire = registry.get("climate_acquire_data")
+    assert init and plan and acquire
+    await _invoke(init, workspace, objective=OBJECTIVE, run_id=RUN_ID)
+    await _invoke(plan, workspace, steps=STANDARD_STEPS)
+
+    loop_progressed = False
+
+    async def _mark_loop() -> None:
+        nonlocal loop_progressed
+        await asyncio.sleep(0.05)
+        loop_progressed = True
+
+    acquire_task = asyncio.create_task(
+        _invoke(
+            acquire,
+            workspace,
+            step_id="acquire",
+            mode="cds",
+            cds_request=_valid_request(),
+        )
+    )
+    marker_task = asyncio.create_task(_mark_loop())
+    await marker_task
+    assert loop_progressed is True
+    result, payload = await acquire_task
+    assert result.is_error is False
+    assert payload["ok"] is True
+    published = workspace / ".climate" / "data" / RUN_ID
+    assert any(path.suffix == ".nc" for path in published.rglob("*") if path.is_file())
+    assert list(published.rglob("*.part")) == []
+    context = loads_run_context(
+        (workspace / ".climate" / "runs" / RUN_ID / "context.json").read_text(encoding="utf-8")
+    )
+    step = next(item for item in context.steps if item.step_id == "acquire")
+    assert step.status == "succeeded"
+    _scan_for_secrets(payload, context.model_dump(mode="json"))

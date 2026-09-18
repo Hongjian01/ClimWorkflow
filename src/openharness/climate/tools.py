@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from abc import ABC
 from pathlib import Path
@@ -291,16 +292,23 @@ class ClimateAcquireDataTool(ClimateTool):
         self, arguments: ClimateAcquireDataInput, context: ToolExecutionContext
     ) -> ToolResult:
         workspace = Path(context.cwd).resolve()
-        return self._result(
-            lambda: acquire_data(
-                workspace,
-                run_id=arguments.run_id,
-                step_id=arguments.step_id,
-                mode=arguments.mode,
-                path=arguments.path,
-                cds_request=arguments.cds_request,
-            ),
-        )
+
+        def _run() -> ToolResult:
+            return self._result(
+                lambda: acquire_data(
+                    workspace,
+                    run_id=arguments.run_id,
+                    step_id=arguments.step_id,
+                    mode=arguments.mode,
+                    path=arguments.path,
+                    cds_request=arguments.cds_request,
+                ),
+            )
+
+        # CDS-007：仅把 CDS 下载卸出事件循环，不改 QueryEngine、不包装其它工具。
+        if arguments.mode == "cds":
+            return await asyncio.to_thread(_run)
+        return _run()
 
 
 class ClimateInspectDatasetTool(ClimateTool):

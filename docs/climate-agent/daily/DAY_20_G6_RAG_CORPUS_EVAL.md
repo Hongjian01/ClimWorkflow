@@ -26,6 +26,7 @@ Day 19 已宣称 **Phase G6 阶段验收 PASS**：混合检索、只读第九工
 - **预计投入**：5～7 小时（SPEC 14C + 人审语料/问句 + 召回脚本 + 离线门闩；不跑真实 Embedding API / 真实 CDS / `real_agent`，除非用户显式允许）
 - **完成标志**：DEC-G6-002 已关闭；上述 MUST 有实现或脚本/fixture 证据；CI 仍禁网；未把问句写回文档刷绿；未上 Chroma；未改 QueryEngine；未覆盖历史 baseline json
 - **上一天**：[Day 19](DAY_19_G6_HUMAN_ACCEPTANCE.md)（G6 人工总验收 PASS）
+- **下一天**：[Day 21](DAY_21_G4_CDS_RETRIEVE_TIMEOUT.md)（G4 跟随：retrieve 超时、线程卸载、`.part` 稳定发布）；Schema 前置顺延 [Day 22](DAY_22_G5_CDS_TOOL_SCHEMA.md)
 
 ## 今日原则
 

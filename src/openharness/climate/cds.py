@@ -2,12 +2,14 @@
 
 凭证只由 cdsapi 标准外部配置读取；本模块不接受、不记录、不打印 API key。
 下载层永不 fallback；显式 sample fallback 由 pipeline 复用 sample 公共服务编排。
+Day 21：retrieve 墙钟超时 + 稳定合法 ``.part`` 发布；不在此修改 QueryEngine。
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 import uuid
 from datetime import date, timedelta
@@ -24,6 +26,11 @@ log = logging.getLogger(__name__)
 
 MAX_RETRIEVE_ATTEMPTS = 3
 BACKOFF_SECONDS = (1.0, 2.0)
+# DEC-G4-002：retrieve 墙钟与 .part 稳定窗口；测试可 monkeypatch。
+RETRIEVE_TIMEOUT_SECONDS = 180.0
+MAX_RETRIEVE_TIMEOUT_SECONDS = 600.0
+PART_STABLE_SECONDS = 2.0
+PART_POLL_INTERVAL_SECONDS = 0.25
 FORMAT_EXTENSION = {"netcdf": ".nc", "grib": ".grib"}
 MEDIA_TYPES = {"netcdf": "application/x-netcdf", "grib": "application/x-grib"}
 _RETRYABLE_CODES = frozenset({"CLIMATE_EXTERNAL_TIMEOUT", "CLIMATE_EXTERNAL_RATE_LIMIT"})
@@ -201,28 +208,40 @@ def download_cds_dataset(
     dest.parent.mkdir(parents=True, exist_ok=True)
     payload = build_retrieve_payload(request)
     last_error: ClimateError | None = None
-    for attempt in range(1, MAX_RETRIEVE_ATTEMPTS + 1):
-        part_path = dest.parent / f".{dest.name}.{uuid.uuid4()}.part"
-        try:
-            log.info(
-                "cds retrieve attempt %s/%s dataset=%s",
-                attempt,
-                MAX_RETRIEVE_ATTEMPTS,
-                request.dataset,
-            )
-            client.retrieve(request.dataset, payload, str(part_path))
-            _validate_part(part_path, dest, request.format)
-            _fsync_replace(part_path, dest)
-            return dest
-        except Exception as exc:
-            classified = classify_cds_exception(exc)
-            last_error = classified
-            log.warning("cds retrieve failed code=%s attempt=%s", classified.code, attempt)
-            if classified.code not in _RETRYABLE_CODES or attempt >= MAX_RETRIEVE_ATTEMPTS:
-                raise classified from None
-            time.sleep(BACKOFF_SECONDS[attempt - 1])
-        finally:
-            _cleanup_part(part_path)
+    seen_parts: list[Path] = []
+    try:
+        for attempt in range(1, MAX_RETRIEVE_ATTEMPTS + 1):
+            part_path = dest.parent / f".{dest.name}.{uuid.uuid4()}.part"
+            seen_parts.append(part_path)
+            try:
+                log.info(
+                    "cds retrieve attempt %s/%s dataset=%s",
+                    attempt,
+                    MAX_RETRIEVE_ATTEMPTS,
+                    request.dataset,
+                )
+                published = _retrieve_with_timeout_and_stable_publish(
+                    client,
+                    request.dataset,
+                    payload,
+                    part_path,
+                    dest,
+                    request.format,
+                )
+                return published
+            except Exception as exc:
+                classified = classify_cds_exception(exc)
+                last_error = classified
+                log.warning("cds retrieve failed code=%s attempt=%s", classified.code, attempt)
+                if classified.code not in _RETRYABLE_CODES or attempt >= MAX_RETRIEVE_ATTEMPTS:
+                    raise classified from None
+                time.sleep(BACKOFF_SECONDS[attempt - 1])
+            finally:
+                if not dest.is_file():
+                    _cleanup_part(part_path)
+    finally:
+        for leftover in seen_parts:
+            _cleanup_part(leftover)
     assert last_error is not None
     raise last_error
 
@@ -275,6 +294,116 @@ def download_cds_dataset_with_candidates(
     last_error.details["candidate_count"] = len(candidates)
     last_error.details["candidate_index"] = len(candidates) - 1
     raise last_error
+
+
+def _resolve_retrieve_timeout() -> float:
+    """墙钟超时：测试 monkeypatch 常量优先；生产可用环境变量，上限 600s。"""
+    value = float(RETRIEVE_TIMEOUT_SECONDS)
+    if abs(value - 180.0) < 1e-9:
+        raw = os.environ.get("CLIMATE_CDS_RETRIEVE_TIMEOUT")
+        if raw is not None and raw.strip() != "":
+            try:
+                parsed = float(raw)
+            except ValueError:
+                parsed = value
+            if parsed > 0:
+                value = parsed
+    if value <= 0:
+        value = 180.0
+    return min(value, MAX_RETRIEVE_TIMEOUT_SECONDS)
+
+
+def _retrieve_with_timeout_and_stable_publish(
+    client: CdsClientProtocol,
+    dataset: str,
+    payload: dict[str, Any],
+    part_path: Path,
+    dest_path: Path,
+    claimed_format: str,
+) -> Path:
+    """在工作线程跑 retrieve；墙钟超时或稳定合法 .part 即结束，不得双发。"""
+    timeout_seconds = _resolve_retrieve_timeout()
+    stable_seconds = float(PART_STABLE_SECONDS)
+    poll_seconds = max(float(PART_POLL_INTERVAL_SECONDS), 0.01)
+    retrieve_error: list[BaseException] = []
+    retrieve_done = threading.Event()
+    publish_lock = threading.Lock()
+    published = False
+
+    def _retrieve() -> None:
+        try:
+            client.retrieve(dataset, payload, str(part_path))
+        except BaseException as exc:
+            retrieve_error.append(exc)
+        finally:
+            retrieve_done.set()
+
+    def _try_publish() -> bool:
+        nonlocal published
+        with publish_lock:
+            if published or dest_path.is_file():
+                published = True
+                return True
+            try:
+                _validate_part(part_path, dest_path, claimed_format)
+                _fsync_replace(part_path, dest_path)
+            except ClimateError:
+                # 半文件、非法 magic，或 Windows 上文件仍被写入句柄锁住：不发布。
+                return False
+            published = True
+            log.info("cds retrieve published stable part dataset=%s", dataset)
+            return True
+
+    worker = threading.Thread(
+        target=_retrieve,
+        name="climate-cds-retrieve",
+        daemon=True,
+    )
+    worker.start()
+    deadline = time.monotonic() + timeout_seconds
+    last_size = -1
+    stable_since: float | None = None
+
+    while True:
+        now = time.monotonic()
+        timed_out = now >= deadline
+        if part_path.is_file():
+            size = part_path.stat().st_size
+            if size != last_size:
+                last_size = size
+                stable_since = now
+            elif (
+                size > 0
+                and stable_since is not None
+                and (now - stable_since) >= stable_seconds
+            ):
+                if _try_publish():
+                    return dest_path
+        if published or dest_path.is_file():
+            return dest_path
+        if retrieve_done.is_set() or timed_out:
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        retrieve_done.wait(timeout=min(poll_seconds, remaining))
+
+    if published or dest_path.is_file():
+        return dest_path
+
+    if retrieve_done.is_set() and not retrieve_error:
+        if _try_publish():
+            return dest_path
+        _validate_part(part_path, dest_path, claimed_format)
+        _fsync_replace(part_path, dest_path)
+        return dest_path
+
+    if retrieve_error:
+        raise retrieve_error[0]
+
+    if part_path.is_file() and _try_publish():
+        return dest_path
+    raise CdsTimeout()
 
 
 def _validate_part(part_path: Path, dest_path: Path, claimed_format: str) -> None:
