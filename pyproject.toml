@@ -65,6 +65,7 @@ openharness = "openharness.cli:app"
 oh = "openharness.cli:app"
 openh = "openharness.cli:app"
 ohmo = "ohmo.cli:app"
+climworkflow = "openharness.climate.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openharness", "ohmo"]

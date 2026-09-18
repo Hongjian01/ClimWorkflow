@@ -44,3 +44,4 @@ uv.lock
 # Climate Eval 运行产物（脱敏 baseline JSON 可入库；真实数据/未发布报告不入库）
 evals/reports/*.json
 *.part
+examples/offline-demo/_run/

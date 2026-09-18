@@ -1,10 +1,16 @@
 # ClimWorkflow
 
+<p align="center">
+  <img src="assets/climworkflow-demo.png" alt="ClimWorkflow 离线 Demo：产物图与 .climate 目录" width="800">
+</p>
+
 基于 [OpenHarness](https://github.com/HKUDS/OpenHarness) 的**可恢复气候数据智能体**。自然语言目标经 Tool Calling 完成获取、检查、绘图与报告。
 
-本仓库是 OpenHarness 的 fork，开发分支 [`feat/climworkflow-mvp`](https://github.com/Hongjian01/OpenHarness/tree/feat/climworkflow-mvp)。**工具循环、Hook、Skill 加载、权限沙箱复用 Runtime**；领域工具、磁盘上下文、中断恢复、CDS 可靠性与工作区检索是本项目自研。
+**工具循环、Hook、Skill 加载、权限沙箱复用 Runtime**；领域工具、磁盘上下文、中断恢复、CDS 可靠性与工作区检索是本项目自研（`src/openharness/climate/`）。
 
-[上游 OpenHarness 英文 README](README.openharness.md) · [上游中文说明](README.zh-CN.md) · [规格 SPEC](docs/climate-agent/SPEC.md)
+独立仓库：[github.com/Hongjian01/ClimWorkflow](https://github.com/Hongjian01/ClimWorkflow)。从 OpenHarness fork 的开发记录在 [`feat/climworkflow-mvp`](https://github.com/Hongjian01/OpenHarness/tree/feat/climworkflow-mvp)。
+
+[上游 OpenHarness 英文 README](README.openharness.md) · [上游中文说明](README.zh-CN.md) · [规格 SPEC](docs/climate-agent/SPEC.md) · [示例产物](examples/offline-demo/)
 
 ---
 
@@ -59,33 +65,16 @@ uv run pytest tests/test_climate -q
 
 保持 `CLIMATE_INTEGRATION=0`，除非你有意跑带标记的真实 CDS 测试。
 
-### 空 workspace 离线 Demo（`sample_pipeline`）
+### 一条命令：空 workspace Demo（`sample_pipeline`）
 
 在仓库根目录执行（真实 Climate 工具，无网、无模型）：
 
 ```powershell
-$ws = Join-Path $env:TEMP "climworkflow-offline-demo"
-if (Test-Path $ws) { Remove-Item -Recurse -Force $ws }
-New-Item -ItemType Directory -Path $ws | Out-Null
-
-uv run python -c @"
-from pathlib import Path
-from evals.climate.assertions import evaluate_hard_assertions
-from evals.climate.models import load_scenario
-from evals.climate.real_offline import run_real_offline
-
-workspace = Path(r'$ws')
-scenario = load_scenario(Path('evals/climate/scenarios/sample_pipeline.yaml'))
-trace = run_real_offline(scenario, workspace=workspace)
-results = evaluate_hard_assertions(trace, list(scenario.hard_assertions))
-assert all(item.passed for item in results), results
-print('status=', trace.final_run_status)
-print('run_id=', trace.run_id)
-print('version=', trace.final_context_version)
-"@
+uv run climworkflow demo --workspace climworkflow-demo
+uv run climworkflow resume --workspace climworkflow-demo
 ```
 
-预期 `$ws/.climate/`：
+`demo` 内部跑 `sample_pipeline`。预期 `climworkflow-demo/.climate/`：
 
 ```text
 .climate/index.json
@@ -95,55 +84,16 @@ print('version=', trace.final_context_version)
 .climate/output/<run_id>/report.md
 ```
 
-`report.md` 只用相对路径引用图，不得出现工作区绝对路径。
+`report.md` 只用相对路径引用图，不得出现工作区绝对路径。脱敏样例见 [examples/offline-demo](examples/offline-demo/)。
 
-本地 CSV 检查（`cached_inspect`，状态为 `running`，无图/报告）：
-
-```powershell
-uv run python -c @"
-from pathlib import Path
-from evals.climate.assertions import evaluate_hard_assertions
-from evals.climate.models import load_scenario
-from evals.climate.real_offline import run_real_offline
-
-workspace = Path(r'$ws') / 'local'
-workspace.mkdir(parents=True, exist_ok=True)
-scenario = load_scenario(Path('evals/climate/scenarios/cached_inspect.yaml'))
-trace = run_real_offline(scenario, workspace=workspace)
-results = evaluate_hard_assertions(trace, list(scenario.hard_assertions))
-assert all(item.passed for item in results), results
-print('local status=', trace.final_run_status)
-"@
-```
+本地 CSV 检查（`cached_inspect`，状态为 `running`，无图/报告）仍可用评测场景；主路径请用上面的 `climworkflow demo`。
 
 ### 模拟新会话：只从磁盘恢复
 
-不要根据聊天摘要猜测成功。权威源是 `climate_read_context`：
+不要根据聊天摘要猜测成功。权威源是 `climate_read_context`（`climworkflow resume` 只调用它）：
 
 ```powershell
-uv run python -c @"
-import asyncio, json
-from pathlib import Path
-from openharness.climate.registry import create_climate_tool_registry
-from openharness.tools.base import ToolExecutionContext
-
-ws = Path(r'$ws')
-
-async def main():
-    tool = create_climate_tool_registry().get('climate_read_context')
-    result = await tool.execute(
-        tool.input_model.model_validate({'include_events': True, 'event_limit': 20}),
-        ToolExecutionContext(cwd=ws),
-    )
-    payload = json.loads(result.output)
-    data = payload.get('data') or {}
-    print('ok=', payload.get('ok'))
-    print('status=', data.get('status') or payload.get('status'))
-    print('run_id=', payload.get('run_id') or data.get('run_id'))
-    print('active_run_id=', data.get('active_run_id'))
-
-asyncio.run(main())
-"@
+uv run climworkflow resume --workspace climworkflow-demo
 ```
 
 Agent 指导见 [`.openharness/skills/climate-ds/SKILL.md`](.openharness/skills/climate-ds/SKILL.md)。
