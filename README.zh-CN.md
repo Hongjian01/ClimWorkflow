@@ -1,8 +1,11 @@
 # <img src="assets/logo.png" alt="OpenHarness" width="40" style="vertical-align: middle;"> `oh` — OpenHarness 中文说明
 
+> **本 fork 的项目说明是 [ClimWorkflow README](README.md)。** 下面是上游 OpenHarness 的简体中文介绍，不是气候智能体文档。
+
 <p align="center">
-  <a href="README.md"><strong>English</strong></a> ·
-  <a href="README.zh-CN.md"><strong>简体中文</strong></a>
+  <a href="README.openharness.md"><strong>OpenHarness English</strong></a> ·
+  <a href="README.zh-CN.md"><strong>OpenHarness 简体中文</strong></a> ·
+  <a href="README.md"><strong>ClimWorkflow</strong></a>
 </p>
 
 **OpenHarness** 是一个面向开源社区的 Agent Harness。它提供轻量、可扩展、可检查的 Agent 基础设施，包括：
