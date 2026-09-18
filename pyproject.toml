@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "openharness-ai"
+name = "climworkflow"
 version = "0.1.9"
 description = "ClimWorkflow — recoverable climate-data agent (acquire, inspect, plot, report)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "novix-science" },
+    { name = "李雪庚" },
 ]
 keywords = ["climworkflow", "climate", "agent", "era5", "openharness"]
 

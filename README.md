@@ -11,12 +11,13 @@
 
 <p align="center">
   <a href="https://github.com/Hongjian01/ClimWorkflow"><img src="https://img.shields.io/badge/repo-Hongjian01%2FClimWorkflow-2563eb" alt="ClimWorkflow"></a>
+  <a href="https://github.com/Hongjian01/ClimWorkflow/actions/workflows/ci.yml"><img src="https://github.com/Hongjian01/ClimWorkflow/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0f766e" alt="MIT"></a>
   <a href="docs/climate-agent/SPEC.md"><img src="https://img.shields.io/badge/spec-climate--agent-111827" alt="SPEC"></a>
   <img src="https://img.shields.io/badge/python-%3E%3D3.10-3776ab" alt="Python">
 </p>
 
-**工具循环、Hook、Skill、权限沙箱复用 OpenHarness。** 领域工具、磁盘 Context、中断恢复、CDS 可靠性与工作区检索是本项目自研（`src/openharness/climate/`）。
+**工具循环、Hook、Skill、权限沙箱复用 OpenHarness。** 领域工具、磁盘 Context、中断恢复、CDS 可靠性与工作区检索是本项目自研（`src/openharness/climate/`）。发行名是 `climworkflow`，Python import 仍是 `openharness`：不把上游包改名，也不把 QueryEngine 算成自研。
 
 独立仓库：[Hongjian01/ClimWorkflow](https://github.com/Hongjian01/ClimWorkflow)。从 OpenHarness fork 的开发记录在 [`feat/climworkflow-mvp`](https://github.com/Hongjian01/OpenHarness/tree/feat/climworkflow-mvp)。
 
@@ -258,7 +259,7 @@ uv run python scripts/climate_knowledge_recall.py
 - 工作区外路径一律拒绝。
 - `full_auto` 下模型仍可能自己 `confirmed=true`；硬闸门只保证「没有确认事件就不能下载」。
 - 全仓库 `pytest -q` 在 Windows 上仍可能有上游 OpenHarness 环境失败；气候回归以 `tests/test_climate` 为准。
-- 未合入上游 HKUDS。Fork CI 曾于 2026-09-02 在 Python 3.10/3.11、Ruff、frontend typecheck 全绿（[run 33604624255](https://github.com/Hongjian01/OpenHarness/actions/runs/33604624255)）。
+- 未合入上游 HKUDS。本仓库 CI（Python 3.10/3.11、Ruff、frontend typecheck）见 [Actions](https://github.com/Hongjian01/ClimWorkflow/actions/workflows/ci.yml)。
 - 不要提交密钥、`.cdsapirc`、下载的 ERA5、`.part`、缓存或 `evals/reports/*.json`。
 
 阶段编号与门禁细节见 [SPEC](docs/climate-agent/SPEC.md)。
