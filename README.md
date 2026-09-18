@@ -1,7 +1,13 @@
 # ClimWorkflow
 
 <p align="center">
-  <img src="assets/climworkflow-demo.png" alt="ClimWorkflow demo: artifacts and .climate workspace" width="800">
+  <img src="assets/climworkflow-tui-welcome.png" alt="ClimWorkflow TUI 欢迎屏" width="900">
+</p>
+<p align="center">
+  <img src="assets/climworkflow-tui-plan.png" alt="ClimWorkflow TUI：规划四步并等待确认" width="900">
+</p>
+<p align="center">
+  <img src="assets/climworkflow-tui-done.png" alt="ClimWorkflow TUI：acquire → inspect → plot → report 验收通过" width="900">
 </p>
 
 <p align="center">

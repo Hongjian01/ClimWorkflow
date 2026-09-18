@@ -41,7 +41,7 @@ def test_help_output() -> tuple[bool, str]:
     result = _run_oh("--help")
     output = result.stdout + result.stderr
     checks = [
-        "Oh my Harness!" in output,
+        "ClimWorkflow" in output,
         "Session" in output,
         "Model & Effort" in output,
         "Output" in output,

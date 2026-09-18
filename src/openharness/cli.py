@@ -751,7 +751,7 @@ def _version_callback(value: bool) -> None:
 app = typer.Typer(
     name="openharness",
     help=(
-        "Oh my Harness! An AI-powered coding assistant.\n\n"
+        "ClimWorkflow — 可恢复气候数据智能体.\n\n"
         "Starts an interactive session by default, use -p/--print for non-interactive output."
     ),
     add_completion=False,

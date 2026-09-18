@@ -26,7 +26,7 @@ def test_cli_help():
     )
     plain_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert result.exit_code == 0
-    assert "Oh my Harness!" in plain_output
+    assert "ClimWorkflow" in plain_output
     assert "setup" in plain_output
     assert "--dry-run" in plain_output
 

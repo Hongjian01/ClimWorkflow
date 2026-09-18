@@ -29,7 +29,7 @@ def _env() -> dict[str, str]:
 
 
 def test_welcome_banner() -> tuple[bool, str]:
-    """Test that the React TUI shows 'Oh my Harness!' on startup."""
+    """Test that the React TUI shows ClimWorkflow on startup."""
     try:
         import pexpect
     except ImportError:
@@ -56,15 +56,15 @@ def test_welcome_banner() -> tuple[bool, str]:
     )
     try:
         # Wait for welcome banner
-        child.expect("Oh my Harness!", timeout=15)
+        child.expect("ClimWorkflow", timeout=15)
         child.expect(pexpect.EOF, timeout=15)
-        return True, "Welcome banner displayed with 'Oh my Harness!'"
+        return True, "Welcome banner displayed with ClimWorkflow"
     except pexpect.TIMEOUT:
         output = child.before or ""
         return False, f"Timeout waiting for welcome banner. Output: {output[:300]}"
     except pexpect.EOF:
         output = child.before or ""
-        if "Oh my Harness!" in output:
+        if "ClimWorkflow" in output:
             return True, "Welcome banner found in output"
         return False, f"EOF before banner. Output: {output[:300]}"
     finally:
