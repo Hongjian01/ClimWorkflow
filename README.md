@@ -1,80 +1,148 @@
 # ClimWorkflow
 
 <p align="center">
-  <img src="assets/climworkflow-demo.png" alt="ClimWorkflow 离线 Demo：产物图与 .climate 目录" width="800">
+  <img src="assets/climworkflow-demo.png" alt="ClimWorkflow demo: artifacts and .climate workspace" width="800">
 </p>
 
-基于 [OpenHarness](https://github.com/HKUDS/OpenHarness) 的**可恢复气候数据智能体**。自然语言目标经 Tool Calling 完成获取、检查、绘图与报告。
+<p align="center">
+  <a href="README.md"><strong>简体中文</strong></a> ·
+  <a href="README.openharness.md"><strong>OpenHarness English</strong></a> ·
+  <a href="README.zh-CN.md"><strong>OpenHarness 简体中文</strong></a>
+</p>
 
-**工具循环、Hook、Skill 加载、权限沙箱复用 Runtime**；领域工具、磁盘上下文、中断恢复、CDS 可靠性与工作区检索是本项目自研（`src/openharness/climate/`）。
+<p align="center">
+  基于 <a href="https://github.com/HKUDS/OpenHarness">OpenHarness</a> 的可恢复气候数据智能体<br>
+  自然语言目标 → Tool Calling → 获取 / 检查 / 绘图 / 报告
+</p>
 
-独立仓库：[github.com/Hongjian01/ClimWorkflow](https://github.com/Hongjian01/ClimWorkflow)。从 OpenHarness fork 的开发记录在 [`feat/climworkflow-mvp`](https://github.com/Hongjian01/OpenHarness/tree/feat/climworkflow-mvp)。
+<p align="center">
+  <a href="https://github.com/Hongjian01/ClimWorkflow"><img src="https://img.shields.io/badge/repo-Hongjian01%2FClimWorkflow-2563eb" alt="ClimWorkflow"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0f766e" alt="MIT"></a>
+  <a href="docs/climate-agent/SPEC.md"><img src="https://img.shields.io/badge/spec-G0–G6-111827" alt="SPEC"></a>
+  <img src="https://img.shields.io/badge/python-%3E%3D3.10-3776ab" alt="Python">
+</p>
 
-[上游 OpenHarness 英文 README](README.openharness.md) · [上游中文说明](README.zh-CN.md) · [规格 SPEC](docs/climate-agent/SPEC.md) · [示例产物](examples/offline-demo/)
+**工具循环、Hook、Skill、权限沙箱复用 OpenHarness。** 领域工具、磁盘 Context、中断恢复、CDS 可靠性与工作区检索是本项目自研（`src/openharness/climate/`）。
+
+独立仓库：[Hongjian01/ClimWorkflow](https://github.com/Hongjian01/ClimWorkflow)。从 OpenHarness fork 的开发记录在 [`feat/climworkflow-mvp`](https://github.com/Hongjian01/OpenHarness/tree/feat/climworkflow-mvp)。
 
 ---
 
-## 解决什么问题
+## ✨ 关键能力
 
-气候分析链路**强顺序、下载有副作用**：任务一长就难中断续跑，模型也容易跳步或把失败说成成功。ClimWorkflow 把进度落在工作区 `.climate/`，不把聊天记录当权威源。
+| 🔁 可恢复工作流 | 🛡️ 硬顺序与门禁 |
+|---|---|
+| 进度写入 `.climate/`，不把聊天当权威源。中断后 `climate_read_context` 从磁盘续跑。 | 规划动作仅允许获取 / 检查 / 绘图 / 报告。跳步返回稳定错误码，不执行模型生成的任意代码。 |
+| **📋 计划确认** | **📡 真 CDS** |
+| `plan` 后须确认才 `acquire`。未确认硬拒绝；改口整表换计划，不往 DAG 里插一步。 | ERA5 走静态目录闸门、有界重试、retrieve 超时与 `.part` 稳定发布。默认 pytest / CI 禁网。 |
+| **🧪 科学 IO 隔离** | **📚 诚实检索** |
+| NetCDF / matplotlib 在子进程中解析与出图，避免 Windows TUI 被 HDF5 GIL / TkAgg 冻住。 | 可选第九工具为 BM25 + 哈希向量 + RRF。**不是** Chroma / 商用 Embedding。检索不能放行 CDS，也不能代替读 Context。 |
 
-Day 10（2026-08-28）人工验收后，G0～G3 称谓为 **ClimWorkflow Offline Engineering MVP**。后续阶段已接入真实 CDS、真实模型冒烟，以及可选的工作区文档检索。
+---
 
-## 架构边界
+## 🤔 解决什么问题
+
+气候分析链路**强顺序、下载有副作用**：任务一长就难中断续跑，模型也容易跳步或把失败说成成功。
+
+ClimWorkflow 把 run 落在工作区磁盘上：状态机管能不能执行，计划闸门管人能不能改口，工具失败返回结构化错误码而不是口头「成功了」。
+
+Day 10（2026-08-28）人工验收后，G0～G3 称谓为 **ClimWorkflow Offline Engineering MVP**。后续阶段已接入真实 CDS、真实模型冒烟、计划确认，以及可选的工作区文档检索。
+
+---
+
+## 🏗️ 架构
+
+OpenHarness 提供循环；ClimWorkflow 挂上领域工具与磁盘真相：
 
 ```text
-OpenHarness QueryEngine（不改语义）
-  → 8 个默认 Climate 工具（7 业务 + 1 只读验收）
-      → 流水线 + 状态机
-          → ContextRepository（原子写、文件锁、WAL）
-              → .climate/  index / runs / data / output
-  → climate-ds Skill（先规划再执行；中断后先读磁盘）
-  → PRE_TOOL_USE Hook
-  → 可选：CDS 下载、NetCDF/GRIB、第九工具 climate_query_knowledge
+openharness/
+  engine/            # 复用 — QueryEngine，不改执行语义
+  tools/ skills/     # 复用 — 注册表、Skill 加载、权限、Hook
+  climate/           # 自研 — 8 个默认气候工具 + 流水线 + 状态机
+    pipeline.py      # init / plan / acquire / inspect / plot / report
+    state.py         # DAG、幂等、plan_confirmed、中断恢复
+    repository.py    # 原子写、文件锁、WAL
+    cds.py           # 目录闸门、超时、.part 发布
+    netcdf_worker.py # 子进程解析 NetCDF
+    plot_worker.py   # 子进程 Agg 出图
+  .climate/          # 工作区权威源 — index / runs / data / output
+```
+
+### Agent Loop
+
+模型决定**下一步调哪个工具**。Harness 决定**怎么安全执行**：
+
+```python
+while True:
+    response = await api.stream(messages, tools)
+    if response.stop_reason != "tool_use":
+        break
+    for tool_call in response.tool_uses:
+        # Permission → PRE_TOOL_USE → Climate execute → 磁盘 Context
+        result = await harness.execute_tool(tool_call)
+    messages.append(tool_results)
+```
+
+Climate 的 `execute` **不改** `query.py`。同步 CDS / NetCDF / 绘图在领域层卸载到线程或子进程。
+
+### 数据流
+
+```mermaid
+flowchart LR
+    U[用户目标] --> TUI["oh TUI / CLI"]
+    TUI --> Q[QueryEngine]
+    Q --> SK[climate-ds Skill]
+    Q --> CT[Climate 工具]
+    CT --> P[权限 + PRE Hook]
+    P --> SM[状态机]
+    SM --> Repo[ContextRepository]
+    Repo --> Disk[".climate/"]
+    CT --> W[CDS / NetCDF / Plot 子进程]
+    W --> Disk
+```
+
+主路径：
+
+```text
+init → plan → （用户确认）→ acquire → inspect → plot → report → validate
 ```
 
 | 复用 OpenHarness | 本项目自研 |
 |---|---|
-| 多步 Tool Calling、入参 Schema、Hook、Skill、路径权限 | 气候工具、RunContext、幂等与冲突、CDS 门禁与弹性、工作区检索 |
+| 多步 Tool Calling、入参 Schema、Hook、Skill、路径权限、TUI | 气候工具、RunContext、幂等与冲突、CDS 门禁与弹性、计划确认、工作区检索 |
 
-规划动作面只允许：获取、检查、绘图、报告。非法跳步返回稳定错误码。不执行模型生成的任意代码。
+---
 
-## 默认工具
+## 🚀 快速开始
 
-| 工具 | 作用 |
-|---|---|
-| `climate_init_workflow` | 初始化或恢复 run |
-| `climate_plan_steps` | 规划四类动作 |
-| `climate_acquire_data` | sample / local / CDS |
-| `climate_inspect_dataset` | CSV / NetCDF / GRIB |
-| `climate_analyze_plot` | 出图 |
-| `climate_write_report` | Markdown 报告 |
-| `climate_read_context` | 只读磁盘进度（恢复权威源） |
-| `climate_validate_artifacts` | 只读产物规则校验 |
+需要 Python ≥ 3.10 与 [uv](https://docs.astral.sh/uv/)。离线 Demo **不需要** API Key，也 **不** 访问 CDS。
 
-`climate_query_knowledge` 仅 `include_knowledge=True` 时注册，默认不进入工具表。检索命中**不能**放行 CDS 下载，也**不能**代替 `climate_read_context`。工作区检索是 BM25 + 哈希向量 + RRF，**不是** Chroma / 商用 Embedding。
-
-## 快速开始
-
-需要 Python ≥ 3.10 与 [uv](https://docs.astral.sh/uv/)。离线演示**不需要** API Key，也**不**访问 CDS。
+### 1. 安装
 
 ```powershell
+git clone https://github.com/Hongjian01/ClimWorkflow.git
+cd ClimWorkflow
 uv sync --extra dev
+```
+
+### 2. 离线回归
+
+```powershell
 uv run pytest tests/test_climate -q
 ```
 
 保持 `CLIMATE_INTEGRATION=0`，除非你有意跑带标记的真实 CDS 测试。
 
-### 一条命令：空 workspace Demo（`sample_pipeline`）
+### 3. 一条命令 Demo
 
-在仓库根目录执行（真实 Climate 工具，无网、无模型）：
+在仓库根目录（真实 Climate 工具，无网、无模型）：
 
 ```powershell
 uv run climworkflow demo --workspace climworkflow-demo
 uv run climworkflow resume --workspace climworkflow-demo
 ```
 
-`demo` 内部跑 `sample_pipeline`。预期 `climworkflow-demo/.climate/`：
+预期 `climworkflow-demo/.climate/`：
 
 ```text
 .climate/index.json
@@ -84,21 +152,40 @@ uv run climworkflow resume --workspace climworkflow-demo
 .climate/output/<run_id>/report.md
 ```
 
-`report.md` 只用相对路径引用图，不得出现工作区绝对路径。脱敏样例见 [examples/offline-demo](examples/offline-demo/)。
+`report.md` 只用相对路径引用图。脱敏样例见 [examples/offline-demo](examples/offline-demo/)。
 
-本地 CSV 检查（`cached_inspect`，状态为 `running`，无图/报告）仍可用评测场景；主路径请用上面的 `climworkflow demo`。
+### 4. 交互 TUI（可选）
 
-### 模拟新会话：只从磁盘恢复
-
-不要根据聊天摘要猜测成功。权威源是 `climate_read_context`（`climworkflow resume` 只调用它）：
+配置模型后：
 
 ```powershell
-uv run climworkflow resume --workspace climworkflow-demo
+uv run oh
 ```
 
-Agent 指导见 [`.openharness/skills/climate-ds/SKILL.md`](.openharness/skills/climate-ds/SKILL.md)。
+中断后续跑不要猜聊天摘要。权威源是 `climate_read_context`（`climworkflow resume` 只调用它）。Agent 约定见 [`.openharness/skills/climate-ds/SKILL.md`](.openharness/skills/climate-ds/SKILL.md)。
 
-## 评测
+---
+
+## 🔧 默认工具
+
+规划动作面只允许四类 `action`。默认注册 **8** 个 `climate_*` 工具：
+
+| 工具 | 角色 | 作用 |
+|---|---|---|
+| `climate_init_workflow` | Plan | 创建或显式 resume run |
+| `climate_plan_steps` | Plan | 写入 DAG；`confirmed=true` 后才允许下载 |
+| `climate_acquire_data` | Data | sample / local / CDS |
+| `climate_inspect_dataset` | Coding | CSV / NetCDF / GRIB 有界 profile |
+| `climate_analyze_plot` | Coding | 直方图等；优先 PNG |
+| `climate_write_report` | Coding | Markdown 报告 |
+| `climate_read_context` | Orchestrate | 只读磁盘进度 |
+| `climate_validate_artifacts` | Coding | 只读产物规则校验 |
+
+`climate_query_knowledge` 仅 `include_knowledge=True` 时注册。每个工具都有 Pydantic 入参、JSON Schema 与统一错误 envelope。
+
+---
+
+## 📊 评测
 
 ```powershell
 uv run python -m evals --suite climate --mode real_offline
@@ -132,36 +219,45 @@ uv run python -m evals --suite climate --mode real_offline --scenario knowledge_
 uv run python scripts/climate_knowledge_recall.py
 ```
 
-## 常见错误码
+### 常见错误码
 
 | 码 | 含义 |
 |---|---|
 | `CLIMATE_INVALID_PATH` | 路径逃逸或写区违规 |
 | `CLIMATE_INVALID_INPUT` | Schema / 字段错误 |
+| `CLIMATE_INVALID_TRANSITION` | 非法状态转换；未确认计划时 `reason=plan_unconfirmed` |
 | `CLIMATE_DEPENDENCY_NOT_READY` | 非法工具顺序 |
 | `CLIMATE_HOOK_BLOCKED` | `PRE_TOOL_USE` 阻断 execute |
-| `CLIMATE_DEPENDENCY_MISSING` | 缺可选依赖，或 `real_agent` 未给 `--agent-config` |
 | `CLIMATE_IDEMPOTENCY_CONFLICT` | 同一步换了输入 |
-| `CLIMATE_EXTERNAL_TIMEOUT` | 可重试的 CDS 超时（最多 3 次） |
-| `CLIMATE_EXTERNAL_RATE_LIMIT` | 可重试的 CDS 429（最多 3 次） |
+| `CLIMATE_EXTERNAL_TIMEOUT` / `RATE_LIMIT` | 可重试的 CDS 超时 / 429（最多 3 次） |
 | `CLIMATE_RECOVERY_REQUIRED` | 只读工具看见未完成 WAL，自己不修盘 |
 
-## 已知限制
+---
+
+## 📌 已知限制
 
 - 离线 Demo（G0～G3）不要求 CDS 或在线模型。不要把 `synthetic_dry_run` 当成真实执行。
-- G4 CDS 有静态合法清单（`reanalysis-era5-single-levels` + 冻结变量）。默认 pytest / CI 禁网（`CLIMATE_INTEGRATION=0`）。
+- G4 CDS 仅静态合法清单（`reanalysis-era5-single-levels` + 冻结变量）。
 - 不是通用 DAG 调度器，也不是任意 NetCDF/GRIB 科学计算栈。
 - 工作区外路径一律拒绝。
+- `full_auto` 下模型仍可能自己 `confirmed=true`；硬闸门只保证「没有确认事件就不能下载」。
 - 全仓库 `pytest -q` 在 Windows 上仍可能有上游 OpenHarness 环境失败；气候回归以 `tests/test_climate` 为准。
 - 未合入上游 HKUDS。Fork CI 曾于 2026-09-02 在 Python 3.10/3.11、Ruff、frontend typecheck 全绿（[run 33604624255](https://github.com/Hongjian01/OpenHarness/actions/runs/33604624255)）。
 - 不要提交密钥、`.cdsapirc`、下载的 ERA5、`.part`、缓存或 `evals/reports/*.json`。
 
-## 文档
+---
+
+## 📄 文档
 
 - 规格：[docs/climate-agent/SPEC.md](docs/climate-agent/SPEC.md)
 - 开发手册：[docs/climate-agent/GREENFIELD_DEVELOPMENT_GUIDE.md](docs/climate-agent/GREENFIELD_DEVELOPMENT_GUIDE.md)
+- 未实现点：[docs/ClimateWorkFlow未实现点.md](docs/ClimateWorkFlow未实现点.md)
 - 上游 Runtime：[README.openharness.md](README.openharness.md)
 
-## License
+---
+
+## 🤝 贡献与许可
+
+开发与验收约定见 SPEC。请勿把真实 CDS 产物、凭证或简历草稿推进仓库。
 
 MIT，见 [LICENSE](LICENSE)。OpenHarness 版权归上游 [HKUDS/OpenHarness](https://github.com/HKUDS/OpenHarness)。
